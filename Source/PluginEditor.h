@@ -1,7 +1,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
-
 //==============================================================================
 /** One row: name on the left, control on the right. Continuous parameters get a
     slider, enumerated ones a combo box, driven entirely by the address map. */
