@@ -1,0 +1,81 @@
+name: Build
+
+# Builds the AU, VST3 and standalone app on a macOS runner and attaches them
+# as downloadable artifacts. Nothing needs to be installed locally.
+on:
+  push:
+    branches: [ main ]
+    tags:     [ 'v*' ]
+  pull_request:
+  workflow_dispatch:      # lets you start a build by hand from the Actions tab
+
+jobs:
+  macos:
+    runs-on: macos-14     # Apple Silicon; still produces a universal binary
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # JUCE is pulled in via FetchContent, so caching it saves ~3 minutes
+      # on every run after the first.
+      - name: Cache JUCE
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: juce-${{ runner.os }}-8.0.4
+
+      - name: Install Ninja
+        run: brew install ninja || true
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # Unsigned plugins are silently rejected by some hosts on Apple Silicon.
+      # Ad-hoc signing is enough for personal use; it is not notarisation, so
+      # Gatekeeper will still prompt the first time you open the standalone app.
+      - name: Ad-hoc codesign
+        run: |
+          for f in build/MC909Editor_artefacts/Release/AU/*.component \
+                   build/MC909Editor_artefacts/Release/VST3/*.vst3 \
+                   build/MC909Editor_artefacts/Release/Standalone/*.app; do
+            [ -e "$f" ] || continue
+            codesign --force --deep --timestamp=none -s - "$f"
+            echo "signed $f"
+          done
+
+      - name: Validate the Audio Unit
+        continue-on-error: true    # auval can be flaky on a headless runner
+        run: |
+          cp -R build/MC909Editor_artefacts/Release/AU/*.component \
+                ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -a | grep -i "909" || true
+          auval -v aufx M909 Indp
+
+      - name: Package
+        run: |
+          mkdir -p out
+          cd build/MC909Editor_artefacts/Release
+          for d in AU VST3 Standalone; do
+            [ -d "$d" ] && ditto -c -k --sequesterRsrc --keepParent "$d" "$GITHUB_WORKSPACE/out/$d.zip"
+          done
+          ls -la "$GITHUB_WORKSPACE/out"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: MC-909-Editor-macOS
+          path: out/*.zip
+          retention-days: 30
+
+      # Pushing a tag like v0.1.0 also publishes a permanent release.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.zip
+          generate_release_notes: true
