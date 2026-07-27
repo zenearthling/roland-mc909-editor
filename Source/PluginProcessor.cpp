@@ -36,7 +36,7 @@ MC909EditorProcessor::MC909EditorProcessor()
                         Block::partInfoPart, Block::compEQ,
                         Block::systemCommon, Block::mastering };
     for (auto b : all)
-        blockData (b).assign (blockSize (b), 0);
+        blockData (b).assign (mc909::blockByteCount (b), 0);
 }
 
 MC909EditorProcessor::~MC909EditorProcessor()
@@ -81,8 +81,8 @@ juce::String MC909EditorProcessor::blockKey (Block b) const
 std::vector<uint8_t>& MC909EditorProcessor::blockData (Block b)
 {
     auto& v = blocks[blockKey (b)];
-    if (v.size() < blockSize (b))
-        v.resize (blockSize (b), 0);
+    if (v.size() < mc909::blockByteCount (b))
+        v.resize (mc909::blockByteCount (b), 0);
     return v;
 }
 
@@ -171,7 +171,7 @@ void MC909EditorProcessor::setPatchName (const juce::String& newName)
 void MC909EditorProcessor::requestBlock (Block b)
 {
     const auto addr = blockAddress (b, selectedPart, selectedTone);
-    hub.send (roland::makeRQ1 (deviceId, addr, blockSize (b)));
+    hub.send (roland::makeRQ1 (deviceId, addr, mc909::blockByteCount (b)));
 }
 
 void MC909EditorProcessor::requestAll()
@@ -307,7 +307,7 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
                 selectedTone = t;
 
             const uint32_t base = blockAddress (b, selectedPart, selectedTone).toLinear();
-            const uint32_t size = blockSize (b);
+            const uint32_t size = mc909::blockByteCount (b);
 
             if (incoming >= base && incoming < base + size)
             {

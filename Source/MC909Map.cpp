@@ -384,7 +384,7 @@ std::vector<const ParamDef*> paramsForBlock (Block b)
     return out;
 }
 
-uint32_t blockSize (Block b)
+uint32_t blockByteCount (Block b)
 {
     switch (b)
     {

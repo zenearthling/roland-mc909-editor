@@ -95,8 +95,11 @@ const std::vector<ParamDef>& allParams();
 /** All parameters belonging to one block, in address order. */
 std::vector<const ParamDef*> paramsForBlock (Block b);
 
-/** Total byte length of a block (for RQ1 / bulk parsing). */
-uint32_t blockSize (Block b);
+/** Total byte length of a block (for RQ1 / bulk parsing).
+    NB: deliberately not called blockSize — juce::AudioProcessor has a private
+    member of that name, and inside a processor's member functions the class
+    scope wins name lookup, so the free function would never be found. */
+uint32_t blockByteCount (Block b);
 
 /** Resolve a block to an absolute address for the given part / tone. */
 roland::Address blockAddress (Block b, int part /* 0-15 */, int tone /* 0-3 */);
