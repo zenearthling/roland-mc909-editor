@@ -82,8 +82,7 @@ jobs:
           generate_release_notes: true
 
   windows:
-    runs-on: windows-latest   # MSVC + Windows SDK preinstalled
-    timeout-minutes: 45
+    runs-on: windows-2022     # pinned so the VS2022 generator below is guaranteed present
 
     steps:
       - uses: actions/checkout@v4
