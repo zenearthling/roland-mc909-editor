@@ -41,6 +41,8 @@ target_sources(MC909Editor PRIVATE
     Source/MC909Map.cpp
     Source/MidiHub.cpp
     Source/PluginProcessor.cpp
+    Source/UiKit.cpp
+    Source/Pages.cpp
     Source/PluginEditor.cpp
 )
 
