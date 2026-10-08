@@ -2,6 +2,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+#include "UiKit.h"
+#include "Pages.h"
 //==============================================================================
 /** One row: name on the left, control on the right. Continuous parameters get a
     slider, enumerated ones a combo box, driven entirely by the address map. */
@@ -66,19 +68,30 @@ private:
 
     void refreshDeviceLists();
     void refreshAll();
+    void updateAccent();
+
+   #ifdef MC909_UI_DEMO
+    void seedDemo();   // screenshot builds only: fills the local mirror with plausible values
+   #endif
+
+    // Declared first so it is destroyed last, after every component using it.
+    ui::SynthLookAndFeel lookAndFeel;
 
     MC909EditorProcessor& proc;
 
-    juce::ComboBox midiOutBox, midiInBox, deviceIdBox, partBox, toneBox;
+    juce::ComboBox midiOutBox, midiInBox, deviceIdBox, partBox;
+    juce::TextButton toneButtons[4];
     juce::TextButton detectButton { "Detect" },
                      getButton    { "Get from MC-909" },
                      sendButton   { "Send to MC-909" };
     juce::ToggleButton toneMaskButtons[4];
-    juce::Label patchNameLabel { {}, "Patch:" };
+    juce::Label automateLabel { {}, "AUTOMATE" };
+    juce::Label patchNameLabel { {}, "Patch" };
     juce::TextEditor patchNameEditor;
     juce::Label statusLabel;
 
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+    juce::OwnedArray<ui::PageBase> pages;
     juce::OwnedArray<ParamPanel> panels;
 
     juce::MidiKeyboardState keyboardState;
