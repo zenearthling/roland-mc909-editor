@@ -120,6 +120,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     addAndMakeVisible (detectButton);
     addAndMakeVisible (getButton);
     addAndMakeVisible (sendButton);
+    addAndMakeVisible (probeButton);
     addAndMakeVisible (patchNameLabel);
     addAndMakeVisible (patchNameEditor);
     addAndMakeVisible (statusLabel);
@@ -210,6 +211,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
             proc.requestAll();
     };
     sendButton.onClick   = [this] { proc.sendAll(); };
+    probeButton.onClick  = [this] { proc.probePatchSizes(); };
 
     patchNameEditor.setTextToShowWhenEmpty ("(no patch loaded)", juce::Colours::grey);
     patchNameEditor.onReturnKey = [this] { proc.setPatchName (patchNameEditor.getText()); };
@@ -487,7 +489,8 @@ void MC909EditorComponent::resized()
         second.removeFromLeft (2);
     }
 
-    auto sendArea = second.removeFromRight (258);
+    auto sendArea = second.removeFromRight (336);
+    probeButton.setBounds (sendArea.removeFromLeft (76).reduced (2, 3));
     getButton.setBounds  (sendArea.removeFromLeft (126).reduced (2, 3));
     sendButton.setBounds (sendArea.removeFromLeft (126).reduced (2, 3));
 

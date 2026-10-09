@@ -83,7 +83,8 @@ private:
     juce::TextButton toneButtons[4];
     juce::TextButton detectButton { "Detect" },
                      getButton    { "Get from MC-909" },
-                     sendButton   { "Send to MC-909" };
+                     sendButton   { "Send to MC-909" },
+                     probeButton  { "Probe" };
     juce::ToggleButton toneMaskButtons[4];
     juce::Label automateLabel { {}, "AUTOMATE" };
     juce::Label patchNameLabel { {}, "Patch" };
