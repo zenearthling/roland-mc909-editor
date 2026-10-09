@@ -200,10 +200,10 @@ void MC909EditorProcessor::requestAll()
 
 void MC909EditorProcessor::probePatchSizes()
 {
-    constexpr int gapMs = 300;
+    const int gapMs = 300;
     hub.logLine ("--- PROBE: patch block sizes, part " + juce::String (selectedPart + 1) + " ---");
 
-    auto probe = [this] (Block b, std::initializer_list<uint32_t> sizes)
+    auto probe = [this, gapMs] (Block b, std::initializer_list<uint32_t> sizes)
     {
         const auto addr = blockAddress (b, selectedPart, 0);
         for (auto sz : sizes)
