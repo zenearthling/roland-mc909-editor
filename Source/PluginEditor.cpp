@@ -201,7 +201,14 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     }
 
     detectButton.onClick = [this] { proc.detectDevice(); };
-    getButton.onClick    = [this] { proc.requestAll(); };
+    getButton.onClick    = [this]
+    {
+        // Alt+click runs the size probe used to diagnose silent patch requests.
+        if (juce::ModifierKeys::currentModifiers.isAltDown())
+            proc.probePatchSizes();
+        else
+            proc.requestAll();
+    };
     sendButton.onClick   = [this] { proc.sendAll(); };
 
     patchNameEditor.setTextToShowWhenEmpty ("(no patch loaded)", juce::Colours::grey);

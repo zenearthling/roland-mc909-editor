@@ -55,6 +55,10 @@ public:
     void requestBlock (mc909::Block b, int gapMs = -1);
     void requestAll();
 
+    /** Diagnostic: asks for the patch blocks with a range of candidate sizes, so the log
+        shows which size the unit accepts. Triggered by Alt+click on Get. */
+    void probePatchSizes();
+
     /** Push the whole local edit buffer back to the device. */
     void sendAll();
 

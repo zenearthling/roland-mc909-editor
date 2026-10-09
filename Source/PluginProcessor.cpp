@@ -198,6 +198,29 @@ void MC909EditorProcessor::requestAll()
     selectedTone = savedTone;
 }
 
+void MC909EditorProcessor::probePatchSizes()
+{
+    constexpr int gapMs = 300;
+    hub.logLine ("--- PROBE: patch block sizes, part " + juce::String (selectedPart + 1) + " ---");
+
+    auto probe = [this] (Block b, std::initializer_list<uint32_t> sizes)
+    {
+        const auto addr = blockAddress (b, selectedPart, 0);
+        for (auto sz : sizes)
+            hub.send (roland::makeRQ1 (deviceId, addr, sz), gapMs);
+    };
+
+    probe (Block::patchCommon, { 0x01, 0x0C, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, 0x56, 0x58, 0x5A,
+                                 0x5C, 0x60, 0x64, 0x68, 0x70, 0x7F, 0x80 });
+
+    probe (Block::patchTMT,    { 0x01, 0x0C, 0x20, 0x25, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x30, 0x34,
+                                 0x38, 0x40, 0x50, 0x7F, 0x80 });
+
+    probe (Block::patchTone,   { 0x01, 0x0C, 0x40, 0x7F, 0x80, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x90,
+                                 0xA0, 0xB0, 0xC0, 0xD0, 0xE0, 0xF0, 0x100, 0x108, 0x10B, 0x120,
+                                 0x140, 0x180, 0x200 });
+}
+
 void MC909EditorProcessor::sendAll()
 {
     std::vector<juce::MidiMessage> out;
