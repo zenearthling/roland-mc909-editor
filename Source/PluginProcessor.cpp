@@ -200,25 +200,36 @@ void MC909EditorProcessor::requestAll()
 
 void MC909EditorProcessor::probePatchSizes()
 {
-    const int gapMs = 300;
-    hub.logLine ("--- PROBE: patch block sizes, part " + juce::String (selectedPart + 1) + " ---");
+    const int gapMs = 100;
+    hub.logLine ("--- PROBE v2 ---");
 
-    auto probe = [this, gapMs] (Block b, std::initializer_list<uint32_t> sizes)
+    auto rq = [this, gapMs] (uint32_t linearAddr, uint32_t size)
     {
-        const auto addr = blockAddress (b, selectedPart, 0);
-        for (auto sz : sizes)
-            hub.send (roland::makeRQ1 (deviceId, addr, sz), gapMs);
+        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (linearAddr), size), gapMs);
     };
 
-    probe (Block::patchCommon, { 0x01, 0x0C, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, 0x56, 0x58, 0x5A,
-                                 0x5C, 0x60, 0x64, 0x68, 0x70, 0x7F, 0x80 });
+    // A) Patch Common (size 0x51) and TMT (0x29) for every part: is any part a patch?
+    hub.logLine ("--- A: patch common/TMT, parts 1-16 ---");
+    for (int part = 0; part < 16; ++part)
+    {
+        rq (blockAddress (Block::patchCommon, part, 0).toLinear(), 0x51);
+        rq (blockAddress (Block::patchTMT,    part, 0).toLinear(), 0x29);
+    }
 
-    probe (Block::patchTMT,    { 0x01, 0x0C, 0x20, 0x25, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x30, 0x34,
-                                 0x38, 0x40, 0x50, 0x7F, 0x80 });
+    // B) Temporary Rhythm area (offset 10 00 00) at sizes 1..0x40, parts 1 and 10.
+    hub.logLine ("--- B: rhythm area sweep, parts 1 and 10 ---");
+    for (int part : { 0, 9 })
+    {
+        const auto base = blockAddress (Block::patchCommon, part, 0).toLinear() + 0x10u * 128u * 128u;
+        for (uint32_t sz = 1; sz <= 0x40; ++sz)
+            rq (base, sz);
+    }
 
-    probe (Block::patchTone,   { 0x01, 0x0C, 0x40, 0x7F, 0x80, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x90,
-                                 0xA0, 0xB0, 0xC0, 0xD0, 0xE0, 0xF0, 0x100, 0x108, 0x10B, 0x120,
-                                 0x140, 0x180, 0x200 });
+    // C) Patch Common sweep, every size 1..0x80, selected part.
+    hub.logLine ("--- C: patch common sweep, part " + juce::String (selectedPart + 1) + " ---");
+    const auto common = blockAddress (Block::patchCommon, selectedPart, 0).toLinear();
+    for (uint32_t sz = 1; sz <= 0x80; ++sz)
+        rq (common, sz);
 }
 
 void MC909EditorProcessor::sendAll()

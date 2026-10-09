@@ -22,7 +22,7 @@ juce::File MidiHub::logFile()
 void MidiHub::logLine (const juce::String& line)
 {
     const juce::ScopedLock sl (logLock);
-    if (logLines >= 600)
+    if (logLines >= 2500)
         return;
 
     ++logLines;
