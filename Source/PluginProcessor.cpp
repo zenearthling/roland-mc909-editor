@@ -200,36 +200,16 @@ void MC909EditorProcessor::requestAll()
 
 void MC909EditorProcessor::probePatchSizes()
 {
-    const int gapMs = 100;
-    hub.logLine ("--- PROBE v2 ---");
+    // Kit dump: read the whole temporary rhythm area of the selected part in
+    // 128-byte pages and log every reply in full, so the layout can be decoded.
+    const int gapMs = 120;
+    hub.setFullHexLogging (true);
+    hub.logLine ("--- KIT DUMP v3, part " + juce::String (selectedPart + 1) + " ---");
 
-    auto rq = [this, gapMs] (uint32_t linearAddr, uint32_t size)
-    {
-        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (linearAddr), size), gapMs);
-    };
+    const uint32_t base = (mc909::temporaryPart (selectedPart) + mc909::kTempRhythm).toLinear();
 
-    // A) Patch Common (size 0x51) and TMT (0x29) for every part: is any part a patch?
-    hub.logLine ("--- A: patch common/TMT, parts 1-16 ---");
-    for (int part = 0; part < 16; ++part)
-    {
-        rq (blockAddress (Block::patchCommon, part, 0).toLinear(), 0x51);
-        rq (blockAddress (Block::patchTMT,    part, 0).toLinear(), 0x29);
-    }
-
-    // B) Temporary Rhythm area (offset 10 00 00) at sizes 1..0x40, parts 1 and 10.
-    hub.logLine ("--- B: rhythm area sweep, parts 1 and 10 ---");
-    for (int part : { 0, 9 })
-    {
-        const auto base = blockAddress (Block::patchCommon, part, 0).toLinear() + 0x10u * 128u * 128u;
-        for (uint32_t sz = 1; sz <= 0x40; ++sz)
-            rq (base, sz);
-    }
-
-    // C) Patch Common sweep, every size 1..0x80, selected part.
-    hub.logLine ("--- C: patch common sweep, part " + juce::String (selectedPart + 1) + " ---");
-    const auto common = blockAddress (Block::patchCommon, selectedPart, 0).toLinear();
-    for (uint32_t sz = 1; sz <= 0x80; ++sz)
-        rq (common, sz);
+    for (uint32_t page = 0; page < 128; ++page)
+        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (base + page * 128u), 0x80), gapMs);
 }
 
 void MC909EditorProcessor::sendAll()

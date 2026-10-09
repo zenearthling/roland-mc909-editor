@@ -22,7 +22,7 @@ juce::File MidiHub::logFile()
 void MidiHub::logLine (const juce::String& line)
 {
     const juce::ScopedLock sl (logLock);
-    if (logLines >= 2500)
+    if (logLines >= 3500)
         return;
 
     ++logLines;
@@ -160,7 +160,7 @@ void MidiHub::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessa
         return;
 
     ++rxSysEx;
-    logLine ("RX " + hexOf (m));
+    logLine ("RX " + hexOf (m, fullHex.load() ? 400 : 16));
 
     // Copy onto the message thread: listeners touch UI state.
     const juce::MidiMessage copy (m);

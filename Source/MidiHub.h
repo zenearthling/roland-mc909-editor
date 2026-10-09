@@ -67,6 +67,9 @@ public:
     void logLine (const juce::String& line);
     static juce::File logFile();
 
+    /** When on, received SysEx is logged in full instead of the first 16 bytes. */
+    void setFullHexLogging (bool on) { fullHex = on; }
+
 private:
     void timerCallback() override;
     void handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage&) override;
@@ -83,6 +86,7 @@ private:
 
     juce::CriticalSection logLock;
     int logLines = 0;
+    std::atomic<bool> fullHex { false };
 
     std::atomic<int> rxAll { 0 }, rxSysEx { 0 }, txSent { 0 };
 
