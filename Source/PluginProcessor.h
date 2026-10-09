@@ -52,7 +52,7 @@ public:
     void setPatchName (const juce::String& newName);
 
     /** Ask the device for one block, or for everything the editor shows. */
-    void requestBlock (mc909::Block b);
+    void requestBlock (mc909::Block b, int gapMs = -1);
     void requestAll();
 
     /** Push the whole local edit buffer back to the device. */
@@ -77,6 +77,11 @@ public:
     void detectDevice();
 
     MidiHub& midi() { return hub; }
+
+    /** Diagnostics for the header: replies stored / replies we could not place / unreadable. */
+    int rxStored() const    { return dt1Stored; }
+    int rxUnplaced() const  { return dt1Unplaced; }
+    int rxUnreadable() const { return sysexUnreadable; }
     juce::AudioProcessorValueTreeState& apvts() { return valueTree; }
 
     struct EditListener
@@ -103,6 +108,7 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout makeLayout();
 
     MidiHub hub;
+    int dt1Stored = 0, dt1Unplaced = 0, sysexUnreadable = 0;
     juce::AudioProcessorValueTreeState valueTree;
 
     std::map<juce::String, std::vector<uint8_t>> blocks;

@@ -98,6 +98,7 @@ private:
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
 
     bool needsRefresh = false;
+    bool deviceSeen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MC909EditorComponent)
 };

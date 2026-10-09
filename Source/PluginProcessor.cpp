@@ -168,10 +168,10 @@ void MC909EditorProcessor::setPatchName (const juce::String& newName)
 }
 
 //==============================================================================
-void MC909EditorProcessor::requestBlock (Block b)
+void MC909EditorProcessor::requestBlock (Block b, int gapMs)
 {
     const auto addr = blockAddress (b, selectedPart, selectedTone);
-    hub.send (roland::makeRQ1 (deviceId, addr, mc909::blockByteCount (b)));
+    hub.send (roland::makeRQ1 (deviceId, addr, mc909::blockByteCount (b)), gapMs);
 }
 
 void MC909EditorProcessor::requestAll()
@@ -179,15 +179,21 @@ void MC909EditorProcessor::requestAll()
     const Block order[] { Block::systemCommon, Block::mastering, Block::compEQ,
                           Block::partInfoPart, Block::patchCommon, Block::patchTMT };
 
+    // Give the unit time to answer each request before the next one arrives.
+    constexpr int requestGapMs = 150;
+
+    dt1Stored = dt1Unplaced = sysexUnreadable = 0;
+    hub.logLine ("--- Get from MC-909: part " + juce::String (selectedPart + 1) + " ---");
+
     for (auto b : order)
-        requestBlock (b);
+        requestBlock (b, requestGapMs);
 
     // All four tones of the selected part.
     const int savedTone = selectedTone;
     for (int t = 0; t < 4; ++t)
     {
         selectedTone = t;
-        requestBlock (Block::patchTone);
+        requestBlock (Block::patchTone, requestGapMs);
     }
     selectedTone = savedTone;
 }
@@ -285,7 +291,11 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
 
     roland::DT1 dt;
     if (! roland::parseDT1 (m, dt))
+    {
+        ++sysexUnreadable;
+        hub.logLine ("  -> not a valid DT1 for this model (wrong header or checksum)");
         return;
+    }
 
     // Work out which block this belongs to by comparing absolute addresses.
     const Block candidates[] { Block::patchCommon, Block::patchTMT, Block::patchTone,
@@ -331,7 +341,16 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
     selectedTone = savedTone;
 
     if (matched)
+    {
+        ++dt1Stored;
         editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+    }
+    else
+    {
+        ++dt1Unplaced;
+        hub.logLine ("  -> DT1 at address " + juce::String::toHexString (dt.address.b.data(), 4, 1)
+                     + " does not fall inside any block this editor knows");
+    }
 }
 
 //==============================================================================

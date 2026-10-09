@@ -1,6 +1,7 @@
 #pragma once
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <deque>
+#include <atomic>
 
 /**
     Opens its own CoreMIDI ports rather than relying on the host.
@@ -37,9 +38,16 @@ public:
     juce::String currentOutputId() const { return outputId; }
     juce::String currentInputId()  const { return inputId; }
     bool isConnected() const { return output != nullptr; }
+    bool isInputOpen() const { return input != nullptr; }
 
-    /** Queue a message. Bulk transfers are paced automatically. */
-    void send (const juce::MidiMessage& m);
+    /** Diagnostics: counters are updated from the MIDI threads. */
+    int  rxMessageCount() const { return rxAll.load(); }
+    int  rxSysExCount()   const { return rxSysEx.load(); }
+    int  txMessageCount() const { return txSent.load(); }
+
+    /** Queue a message. gapMs is the minimum wait before the NEXT message goes out
+        (-1 = use the default interval). */
+    void send (const juce::MidiMessage& m, int gapMs = -1);
 
     /** Queue several messages as one burst. */
     void sendAll (const std::vector<juce::MidiMessage>& ms);
@@ -53,7 +61,11 @@ public:
     void removeListener (Listener* l) { listeners.remove (l); }
 
     /** Interval between queued messages, in milliseconds. */
-    void setSendInterval (int ms) { sendIntervalMs = juce::jmax (1, ms); startTimer (sendIntervalMs); }
+    void setSendInterval (int ms) { sendIntervalMs = juce::jmax (1, ms); }
+
+    /** Append a line to the MIDI log file (Documents/MC909-Editor-midi-log.txt). */
+    void logLine (const juce::String& line);
+    static juce::File logFile();
 
 private:
     void timerCallback() override;
@@ -64,8 +76,15 @@ private:
     juce::String outputId, inputId;
 
     mutable juce::CriticalSection queueLock;
-    std::deque<juce::MidiMessage> queue;
+    struct Item { juce::MidiMessage msg; int gapMs; };
+    std::deque<Item> queue;
     int sendIntervalMs = 5;
+    juce::uint32 nextSendAt = 0;
+
+    juce::CriticalSection logLock;
+    int logLines = 0;
+
+    std::atomic<int> rxAll { 0 }, rxSysEx { 0 }, txSent { 0 };
 
     juce::ListenerList<Listener> listeners;
 

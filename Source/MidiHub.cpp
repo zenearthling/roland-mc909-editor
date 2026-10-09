@@ -1,8 +1,39 @@
 #include "MidiHub.h"
 
+namespace
+{
+    juce::String hexOf (const juce::MidiMessage& m, int maxBytes = 16)
+    {
+        const auto* d = m.getRawData();
+        const int n = m.getRawDataSize();
+        auto s = juce::String::toHexString (d, juce::jmin (n, maxBytes), 1);
+        if (n > maxBytes)
+            s << " ...";
+        return s + "  (" + juce::String (n) + " bytes)";
+    }
+}
+
+juce::File MidiHub::logFile()
+{
+    return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+               .getChildFile ("MC909-Editor-midi-log.txt");
+}
+
+void MidiHub::logLine (const juce::String& line)
+{
+    const juce::ScopedLock sl (logLock);
+    if (logLines >= 600)
+        return;
+
+    ++logLines;
+    logFile().appendText (juce::Time::getCurrentTime().toString (false, true, true, true) + "  " + line + "\n");
+}
+
 MidiHub::MidiHub()
 {
-    startTimer (sendIntervalMs);
+    logFile().getParentDirectory().createDirectory();
+    logFile().replaceWithText ("MC-909 Editor MIDI log\n");
+    startTimer (5);
 }
 
 MidiHub::~MidiHub()
@@ -68,17 +99,17 @@ void MidiHub::closeAll()
     outputId.clear();
 }
 
-void MidiHub::send (const juce::MidiMessage& m)
+void MidiHub::send (const juce::MidiMessage& m, int gapMs)
 {
     const juce::ScopedLock sl (queueLock);
-    queue.push_back (m);
+    queue.push_back ({ m, gapMs < 0 ? sendIntervalMs : gapMs });
 }
 
 void MidiHub::sendAll (const std::vector<juce::MidiMessage>& ms)
 {
     const juce::ScopedLock sl (queueLock);
     for (const auto& m : ms)
-        queue.push_back (m);
+        queue.push_back ({ m, sendIntervalMs });
 }
 
 void MidiHub::clearQueue()
@@ -98,7 +129,11 @@ void MidiHub::timerCallback()
     if (output == nullptr)
         return;
 
-    juce::MidiMessage next;
+    const auto now = juce::Time::getMillisecondCounter();
+    if ((juce::int32) (now - nextSendAt) < 0)
+        return;
+
+    Item next;
 
     {
         const juce::ScopedLock sl (queueLock);
@@ -109,13 +144,23 @@ void MidiHub::timerCallback()
         queue.pop_front();
     }
 
-    output->sendMessageNow (next);
+    output->sendMessageNow (next.msg);
+    nextSendAt = now + (juce::uint32) next.gapMs;
+    ++txSent;
+
+    if (next.msg.isSysEx())
+        logLine ("TX " + hexOf (next.msg));
 }
 
 void MidiHub::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& m)
 {
+    ++rxAll;
+
     if (! m.isSysEx())
         return;
+
+    ++rxSysEx;
+    logLine ("RX " + hexOf (m));
 
     // Copy onto the message thread: listeners touch UI state.
     const juce::MidiMessage copy (m);

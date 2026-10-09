@@ -251,6 +251,9 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     statusLabel.setJustificationType (juce::Justification::centredRight);
     statusLabel.setColour (juce::Label::textColourId, ui::col::textDim);
     statusLabel.setFont (ui::font (12.0f));
+    statusLabel.setTooltip ("MIDI out port, MIDI in port, and SysEx messages received from the MC-909 so far. "
+                            "If RX stays at 0 after Detect/Get, nothing is coming back. "
+                            "A log of every SysEx message is written to Documents\\MC909-Editor-midi-log.txt");
 
     updateAccent();
 
@@ -317,7 +320,7 @@ void MC909EditorComponent::modelChanged()
 
 void MC909EditorComponent::deviceDetected (const juce::String&)
 {
-    statusLabel.setText ("MC-909 detected", juce::dontSendNotification);
+    deviceSeen = true;
 }
 
 void MC909EditorComponent::timerCallback()
@@ -328,12 +331,26 @@ void MC909EditorComponent::timerCallback()
         refreshAll();
     }
 
-    const int pending = proc.midi().pendingCount();
+    auto& hub = proc.midi();
+    const int pending = hub.pendingCount();
+    const bool portsOk = hub.isConnected() && hub.isInputOpen();
+
+    juce::String text;
     if (pending > 0)
-        statusLabel.setText ("Sending... " + juce::String (pending), juce::dontSendNotification);
-    else if (statusLabel.getText().startsWith ("Sending"))
-        statusLabel.setText (proc.midi().isConnected() ? "Ready" : "No MIDI output",
-                             juce::dontSendNotification);
+        text = "Sending... " + juce::String (pending);
+    else
+        text << (deviceSeen ? "909 found  " : "")
+             << "Out " << (hub.isConnected() ? "ok" : "CLOSED")
+             << "  In " << (hub.isInputOpen() ? "ok" : "CLOSED")
+             << "  RX " << hub.rxSysExCount()
+             << " (" << proc.rxStored() << " stored)";
+
+    const auto colour = portsOk ? ui::col::textDim : juce::Colour (0xffff6f6f);
+    if (statusLabel.findColour (juce::Label::textColourId) != colour)
+        statusLabel.setColour (juce::Label::textColourId, colour);
+
+    if (statusLabel.getText() != text)
+        statusLabel.setText (text, juce::dontSendNotification);
 }
 
 void MC909EditorComponent::refreshAll()
