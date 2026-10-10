@@ -74,6 +74,9 @@ private:
     struct Cell : public juce::Component
     {
         MacroBar* owner = nullptr; int slot = 0;
+        juce::Slider knob;
+        std::unique_ptr<juce::SliderParameterAttachment> attach;
+        void resized() override { knob.setBounds (getLocalBounds().removeFromRight (34).reduced (3)); }
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;

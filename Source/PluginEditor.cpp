@@ -545,6 +545,7 @@ void MacroBar::Cell::paint (juce::Graphics& g)
     g.drawRoundedRectangle (r, 5.0f, isArmed ? 2.0f : 1.0f);
 
     auto t = getLocalBounds().reduced (8, 3);
+    t.removeFromRight (34);
     g.setColour (accent);
     g.setFont (ui::font (11.0f, true));
     g.drawText (juce::String (slot + 1), t.removeFromLeft (14), juce::Justification::centredLeft);
@@ -592,6 +593,12 @@ MacroBar::MacroBar (MC909EditorProcessor& p, std::function<void()> onChanged)
     {
         cells[i].owner = this;
         cells[i].slot = i;
+        cells[i].knob.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        cells[i].knob.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+        cells[i].knob.setTooltip ("Knob " + juce::String (i + 1) + ": the one to MIDI-map in Live");
+        if (auto* prm = proc.getMacroParameter (i))
+            cells[i].attach = std::make_unique<juce::SliderParameterAttachment> (*prm, cells[i].knob);
+        cells[i].addAndMakeVisible (cells[i].knob);
         addAndMakeVisible (cells[i]);
     }
     refresh();
