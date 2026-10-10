@@ -268,7 +268,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
 
     statusLabel.setJustificationType (juce::Justification::centredRight);
     statusLabel.setColour (juce::Label::textColourId, ui::col::textDim);
-    statusLabel.setFont (ui::font (12.0f));
+    statusLabel.setFont (ui::font (9.5f));
     statusLabel.setTooltip ("MIDI out port, MIDI in port, and SysEx messages received from the MC-909 so far. "
                             "If RX stays at 0 after Detect/Get, nothing is coming back. "
                             "A log of every SysEx message is written to Documents\\MC909-Editor-midi-log.txt");
@@ -481,7 +481,7 @@ void MC909EditorComponent::paint (juce::Graphics& g)
 
     g.setColour (ui::col::textDim);
     g.setFont (ui::font (11.0f, true).withExtraKerningFactor (0.2f));
-    g.drawText ("EDITOR", 98, 8, 70, 30, juce::Justification::centredLeft);
+    g.drawText ("EDITOR", 124, 8, 70, 30, juce::Justification::centredLeft);
 }
 
 void MC909EditorComponent::resized()
@@ -489,9 +489,9 @@ void MC909EditorComponent::resized()
     auto r = getLocalBounds().reduced (10, 8);
 
     auto top = r.removeFromTop (30);
-    top.removeFromLeft (172);
-    midiOutBox.setBounds  (top.removeFromLeft (176).reduced (2, 2));
-    midiInBox.setBounds   (top.removeFromLeft (176).reduced (2, 2));
+    top.removeFromLeft (200);
+    midiOutBox.setBounds  (top.removeFromLeft (166).reduced (2, 2));
+    midiInBox.setBounds   (top.removeFromLeft (166).reduced (2, 2));
     deviceIdBox.setBounds (top.removeFromLeft (96).reduced (2, 2));
     detectButton.setBounds (top.removeFromLeft (76).reduced (2, 2));
 

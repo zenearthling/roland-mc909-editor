@@ -20,9 +20,11 @@ juce::Colour toneColour (int tone)
     return c[juce::jlimit (0, 3, tone)];
 }
 
+static constexpr float kFontScale = 1.2f;   // global text size multiplier
+
 juce::Font font (float height, bool bold)
 {
-    return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
+    return juce::Font (juce::FontOptions (height * kFontScale, bold ? juce::Font::bold : juce::Font::plain));
 }
 
 static float textWidth (const juce::Font& f, const juce::String& s)
