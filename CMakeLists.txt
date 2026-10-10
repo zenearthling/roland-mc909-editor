@@ -44,6 +44,7 @@ target_sources(MC909Editor PRIVATE
     Source/UiKit.cpp
     Source/Pages.cpp
     Source/PluginEditor.cpp
+    Source/Help.cpp
 )
 
 target_compile_definitions(MC909Editor PUBLIC
