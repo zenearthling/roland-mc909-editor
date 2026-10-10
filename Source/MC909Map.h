@@ -59,6 +59,12 @@ constexpr uint32_t kSizeMastering     = 0x12;
 constexpr uint32_t kSizeCompEQ        = 0x0C;
 constexpr uint32_t kSizeRhythmCommon  = 0x12;
 constexpr uint32_t kSizeRhythmNote    = 0xC1;          // 5E 00 .. 5F 40 for pad 2, i.e. 128 + 65 bytes
+constexpr uint32_t kSizeSetup         = 0x11;
+constexpr uint32_t kSizeMfx1          = 128 + 3;       // 00 00 01 03
+constexpr uint32_t kSizeMfx2          = 128 + 2;       // 00 00 01 02
+constexpr uint32_t kSizeReverb        = 0x51;          // type + 20 four-byte parameters
+constexpr uint32_t kMfx1ParamBase     = 3;             // parameter n at base + 4*(n-1)
+constexpr uint32_t kMfx2ParamBase     = 2;
 constexpr uint32_t kRhythmPads        = 16;
 constexpr uint32_t kRhythmToneBase    = 0x21;          // first tone section inside a pad block
 constexpr uint32_t kRhythmToneSpan    = 29;            // bytes per tone section inside a pad block
@@ -75,7 +81,11 @@ enum class Block
     systemCommon,
     mastering,
     rhythmCommon,
-    rhythmNote
+    rhythmNote,
+    setup,      ///< 01 00 00 00 - effect switches (+ arpeggio/chord, not edited here)
+    mfx1,       ///< 10 00 02 00
+    mfx2,       ///< 10 00 04 00
+    reverb      ///< 10 00 06 00
 };
 
 struct ParamDef

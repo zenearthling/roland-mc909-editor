@@ -79,7 +79,8 @@ MC909EditorProcessor::MC909EditorProcessor()
     // first dump arrives.
     const Block all[] { Block::patchCommon, Block::patchTMT, Block::patchTone,
                         Block::partInfoPart, Block::compEQ,
-                        Block::systemCommon, Block::mastering };
+                        Block::systemCommon, Block::mastering,
+                        Block::setup, Block::mfx1, Block::mfx2, Block::reverb };
     for (auto b : all)
         blockData (b).assign (mc909::blockByteCount (b), 0);
 
@@ -151,6 +152,10 @@ juce::String MC909EditorProcessor::blockKey (Block b) const
         case Block::compEQ:       return "compEQ";
         case Block::systemCommon: return "systemCommon";
         case Block::mastering:    return "mastering";
+        case Block::setup:        return "setup";
+        case Block::mfx1:         return "mfx1";
+        case Block::mfx2:         return "mfx2";
+        case Block::reverb:       return "reverb";
         case Block::rhythmCommon: return "rhythmCommon:" + juce::String (selectedPart);
         case Block::rhythmNote:   return blockKeyFor (b, selectedPad);
     }
@@ -290,8 +295,21 @@ void MC909EditorProcessor::requestAll()
     }
     selectedTone = savedTone;
 
+    requestEffects (requestGapMs);
+
     // Rhythm kit (answered only when the part holds a rhythm set).
     requestRhythm (100);
+}
+
+void MC909EditorProcessor::requestEffects (int gapMs)
+{
+    for (auto b : { Block::setup, Block::mfx1, Block::mfx2, Block::reverb })
+        requestBlock (b, gapMs);
+
+    // The last parameter of each MFX straddles the 128-byte boundary; the unit omits such a
+    // value from a bulk reply, so ask for it on its own (as with a rhythm tone's wave number).
+    hub.send (roland::makeRQ1 (deviceId, blockAddress (Block::mfx1, 0, 0) + (mc909::kMfx1ParamBase + 4u * 31u), 4), gapMs);
+    hub.send (roland::makeRQ1 (deviceId, blockAddress (Block::mfx2, 0, 0) + (mc909::kMfx2ParamBase + 4u * 31u), 4), gapMs);
 }
 
 void MC909EditorProcessor::requestRhythm (int gapMs)
@@ -551,7 +569,8 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
     const Block candidates[] { Block::patchCommon, Block::patchTMT, Block::patchTone,
                                Block::partInfoPart, Block::compEQ,
                                Block::systemCommon, Block::mastering,
-                               Block::rhythmCommon, Block::rhythmNote };
+                               Block::rhythmCommon, Block::rhythmNote,
+                               Block::setup, Block::mfx1, Block::mfx2, Block::reverb };
 
     const uint32_t incoming = dt.address.toLinear();
 

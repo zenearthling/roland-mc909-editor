@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "Help.h"
 
 using namespace mc909;
 
@@ -127,12 +128,21 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     addAndMakeVisible (tabs);
     addAndMakeVisible (keyboard);
 
+    channelLabel.setFont (ui::font (10.0f));
+    channelLabel.setColour (juce::Label::textColourId, ui::col::textDim);
+    channelLabel.setJustificationType (juce::Justification::centredRight);
+    channelLabel.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (channelLabel);
+
     macroBar = std::make_unique<MacroBar> (proc, [this] { teachModeChanged(); });
     addAndMakeVisible (*macroBar);
     teachOverlay = std::make_unique<TeachOverlay> (
         [this] (juce::Point<int> p) { return pickAt (p); },
         [this] (const mc909::ParamDef& d) { macroBar->assignArmed (d); });
     addChildComponent (*teachOverlay);
+    helpOverlay = std::make_unique<HelpOverlay> ([this] (juce::Point<int> p) { return pickAt (p, helpOverlay.get()); });
+    addChildComponent (*helpOverlay);
+    macroBar->onHelp = [this] { helpModeChanged(); };
 
     automateLabel.setFont (ui::font (10.5f, true).withExtraKerningFactor (0.12f));
     automateLabel.setColour (juce::Label::textColourId, ui::col::textDim);
@@ -234,15 +244,19 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     pages.add (new ModPage (proc));
     pages.add (new OutPage (proc));
     pages.add (new RhythmPage (proc));
+    pages.add (new PatchPage (proc));
+    pages.add (new TmtPage (proc));
+    pages.add (new FxPage (proc));
     tabs.addTab ("Tone", tabColour, pages[0], false);
     tabs.addTab ("Mod",  tabColour, pages[1], false);
     tabs.addTab ("Out",  tabColour, pages[2], false);
     tabs.addTab ("Rhythm", tabColour, pages[3], false);
+    tabs.addTab ("Patch", tabColour, pages[4], false);
+    tabs.addTab ("TMT",   tabColour, pages[5], false);
+    tabs.addTab ("FX",    tabColour, pages[6], false);
 
     struct TabDef { const char* name; Block block; };
     const TabDef tabDefs[] {
-        { "Patch",    Block::patchCommon  },
-        { "TMT",      Block::patchTMT     },
         { "Part",     Block::partInfoPart },
         { "Comp/EQ",  Block::compEQ       },
         { "System",   Block::systemCommon },
@@ -282,8 +296,8 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     refreshAll();
 
     setResizable (true, true);
-    setResizeLimits (1060, 746, 1700, 1250);
-    setSize (1120, 806);
+    setResizeLimits (1060, 764, 1700, 1250);
+    setSize (1120, 824);
 
     startTimerHz (12);
 }
@@ -373,6 +387,8 @@ void MC909EditorComponent::timerCallback()
 
 void MC909EditorComponent::refreshAll()
 {
+    channelLabel.setText ("On-screen keys play on MIDI Ch. " + juce::String (proc.getSelectedPart() + 1)
+                              + "  (Part " + juce::String (proc.getSelectedPart() + 1) + ")", juce::dontSendNotification);
     if (macroBar != nullptr) macroBar->refresh();
     for (auto* p : pages)
         p->refresh();
@@ -462,6 +478,11 @@ void MC909EditorComponent::seedDemo()
         macroBar->assignArmed (ui::findParam ("rn.fine"));
         macroBar->assignArmed (ui::findParam ("rn.fine"));
     }
+    if (auto hid = juce::SystemStats::getEnvironmentVariable ("MC909_HELP", ""); hid.isNotEmpty())
+    {
+        macroBar->setHelp (true);
+        helpOverlay->demoHover (hid == "none" ? nullptr : &ui::findParam (hid.toRawUTF8()), { 400, 120 });
+    }
     proc.setSelectedTone (juce::SystemStats::getEnvironmentVariable ("MC909_TONE", "0").getIntValue());
 }
 #endif
@@ -525,10 +546,11 @@ void MC909EditorComponent::resized()
 
     r.removeFromTop (6);
     keyboard.setBounds (r.removeFromBottom (68).reduced (0, 2));
-    r.removeFromBottom (4);
+    channelLabel.setBounds (r.removeFromBottom (18));
     macroBar->setBounds (r.removeFromBottom (42));
     tabs.setBounds (r);
     teachOverlay->setBounds (r.withTrimmedTop (32));
+    helpOverlay->setBounds (r.withTrimmedTop (32));
 }
 
 //==============================================================================
@@ -571,8 +593,22 @@ MacroBar::MacroBar (MC909EditorProcessor& p, std::function<void()> onChanged)
 {
     teachButton.setClickingTogglesState (true);
     teachButton.setTooltip ("Pick a knob, then click any control to assign it. In Live: Configure mode, click the plugin's Knob, turn the MPK knob.");
+    helpButton.setClickingTogglesState (true);
+    helpButton.setTooltip ("Hover over any control to read what it does");
+    helpButton.onClick = [this]
+    {
+        if (isHelping())
+            stopTeaching();
+        if (onHelp) onHelp();
+        changed();
+    };
     teachButton.onClick = [this]
     {
+        if (isTeaching() && isHelping())
+        {
+            helpButton.setToggleState (false, juce::dontSendNotification);
+            if (onHelp) onHelp();
+        }
         armed = 0;
         refresh();
         changed();
@@ -584,6 +620,7 @@ MacroBar::MacroBar (MC909EditorProcessor& p, std::function<void()> onChanged)
     };
     addAndMakeVisible (teachButton);
     addAndMakeVisible (clearButton);
+    addAndMakeVisible (helpButton);
 
     hint.setFont (ui::font (11.0f));
     hint.setColour (juce::Label::textColourId, ui::col::textDim);
@@ -607,6 +644,7 @@ MacroBar::MacroBar (MC909EditorProcessor& p, std::function<void()> onChanged)
 void MacroBar::resized()
 {
     auto r = getLocalBounds().reduced (0, 3);
+    helpButton.setBounds (r.removeFromLeft (64).reduced (2, 3));
     teachButton.setBounds (r.removeFromLeft (110).reduced (2, 3));
     clearButton.setBounds (r.removeFromRight (80).reduced (2, 3));
     auto h = r.removeFromRight (0);
@@ -622,6 +660,11 @@ void MacroBar::setArmed (int slot)
 {
     armed = juce::jlimit (0, 7, slot);
     refresh();
+}
+
+void MacroBar::stopHelping()
+{
+    helpButton.setToggleState (false, juce::dontSendNotification);
 }
 
 void MacroBar::stopTeaching()
@@ -680,13 +723,13 @@ void TeachOverlay::mouseDown (const juce::MouseEvent& e)
     repaint();
 }
 
-const ParamDef* MC909EditorComponent::pickAt (juce::Point<int> inOverlay)
+const ParamDef* MC909EditorComponent::pickAt (juce::Point<int> inOverlay, juce::Component* overlay)
 {
     auto* content = tabs.getCurrentContentComponent();
     if (content == nullptr)
         return nullptr;
 
-    const auto pt = content->getLocalPoint (teachOverlay.get(), inOverlay);
+    const auto pt = content->getLocalPoint (overlay != nullptr ? overlay : teachOverlay.get(), inOverlay);
     auto* hit = content->getComponentAt (pt);
 
     for (auto* c = hit; c != nullptr && c != content->getParentComponent(); c = c->getParentComponent())
@@ -699,11 +742,77 @@ const ParamDef* MC909EditorComponent::pickAt (juce::Point<int> inOverlay)
     return nullptr;
 }
 
+void MC909EditorComponent::helpModeChanged()
+{
+    const bool on = macroBar->isHelping();
+    if (on)
+    {
+        teachOverlay->setVisible (false);
+        helpOverlay->setVisible (true);
+        helpOverlay->toFront (false);
+    }
+    else
+        helpOverlay->setVisible (false);
+    resized();
+}
+
 void MC909EditorComponent::teachModeChanged()
 {
+    if (macroBar->isTeaching())
+    {
+        macroBar->stopHelping();
+        helpOverlay->setVisible (false);
+    }
     const bool on = macroBar->isTeaching();
     teachOverlay->setVisible (on);
     if (on)
         teachOverlay->toFront (false);
     resized();
+}
+
+//==============================================================================
+void HelpOverlay::paint (juce::Graphics& g)
+{
+    const auto accent = findColour (ui::accentColourId, true);
+    g.setColour (accent.withAlpha (0.45f));
+    g.drawRect (getLocalBounds(), 2);
+
+    juce::String title, range, body;
+    if (hover != nullptr)
+    {
+        title = hover->name;
+        range = help::rangeLine (*hover);
+        body  = help::describe (*hover);
+    }
+    else
+    {
+        title = "Help mode";
+        body  = "Hover over any control to see what it does and which values it takes. Nothing is changed while Help is on. Click Help again to leave.";
+    }
+
+    const int w = juce::jmin (getWidth() - 24, 620);
+    const int h = 112;
+    const bool top = pos.y > getHeight() / 2;
+    auto tile = juce::Rectangle<int> (12, top ? 12 : getHeight() - h - 12, w, h);
+
+    g.setColour (ui::col::card);
+    g.fillRoundedRectangle (tile.toFloat(), 8.0f);
+    g.setColour (accent);
+    g.drawRoundedRectangle (tile.toFloat().reduced (0.5f), 8.0f, 1.5f);
+
+    auto in = tile.reduced (14, 10);
+    g.setColour (accent);
+    g.setFont (ui::font (14.0f, true));
+    g.drawText (title, in.removeFromTop (20), juce::Justification::centredLeft);
+
+    if (range.isNotEmpty())
+    {
+        g.setColour (ui::col::textDim);
+        g.setFont (ui::font (11.0f));
+        g.drawFittedText (range, in.removeFromTop (16), juce::Justification::centredLeft, 1);
+    }
+
+    g.setColour (ui::col::text);
+    g.setFont (ui::font (12.5f));
+    g.drawFittedText (body, in, juce::Justification::topLeft, 4, 1.0f);
 }

@@ -58,6 +58,10 @@ public:
     void refresh();
 
     bool isTeaching() const { return teachButton.getToggleState(); }
+    bool isHelping() const  { return helpButton.getToggleState(); }
+    void stopHelping();
+    void setHelp (bool on) { helpButton.setToggleState (on, juce::dontSendNotification); if (onHelp) onHelp(); }
+    std::function<void()> onHelp;
     int  armedSlot() const  { return armed; }
     void stopTeaching();
     /** Called by the overlay with whatever the user clicked. */
@@ -69,7 +73,7 @@ private:
 
     MC909EditorProcessor& proc;
     std::function<void()> changed;
-    juce::TextButton teachButton { "Teach knobs" }, clearButton { "Clear all" };
+    juce::TextButton teachButton { "Teach knobs" }, clearButton { "Clear all" }, helpButton { "Help" };
     juce::Label hint;
     struct Cell : public juce::Component
     {
@@ -99,6 +103,22 @@ public:
 private:
     std::function<const mc909::ParamDef*(juce::Point<int>)> pickFn;
     std::function<void (const mc909::ParamDef&)> assignFn;
+    const mc909::ParamDef* hover = nullptr;
+    juce::Point<int> pos;
+};
+
+/** Help mode: hovering a control shows a tile describing it. Clicks are swallowed so nothing is edited. */
+class HelpOverlay : public juce::Component
+{
+public:
+    explicit HelpOverlay (std::function<const mc909::ParamDef*(juce::Point<int>)> pick) : pickFn (std::move (pick)) {}
+    void paint (juce::Graphics&) override;
+    void mouseMove (const juce::MouseEvent& e) override { pos = e.getPosition(); hover = pickFn (pos); repaint(); }
+    void mouseDrag (const juce::MouseEvent& e) override { mouseMove (e); }
+    void mouseExit (const juce::MouseEvent&) override { hover = nullptr; repaint(); }
+    void demoHover (const mc909::ParamDef* d, juce::Point<int> p) { hover = d; pos = p; repaint(); }
+private:
+    std::function<const mc909::ParamDef*(juce::Point<int>)> pickFn;
     const mc909::ParamDef* hover = nullptr;
     juce::Point<int> pos;
 };
@@ -153,10 +173,13 @@ private:
     juce::OwnedArray<ui::PageBase> pages;
     juce::OwnedArray<ParamPanel> panels;
 
+    juce::Label channelLabel;
     std::unique_ptr<MacroBar> macroBar;
     std::unique_ptr<TeachOverlay> teachOverlay;
-    const mc909::ParamDef* pickAt (juce::Point<int> inEditor);
+    std::unique_ptr<HelpOverlay> helpOverlay;
+    const mc909::ParamDef* pickAt (juce::Point<int> inEditor, juce::Component* overlay = nullptr);
     void teachModeChanged();
+    void helpModeChanged();
 
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };

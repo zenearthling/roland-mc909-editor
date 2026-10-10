@@ -132,14 +132,58 @@ namespace
     }
 
     // -----------------------------------------------------------------------
+    void buildEffects()
+    {
+        // Setup: the four effect on/off switches.
+        add (Block::setup, "fx.comp_sw", "Compressor", 0x00, 0, 1, 0, 1, offOn);
+        add (Block::setup, "fx.mfx1_sw", "MFX 1",      0x01, 0, 1, 0, 1, offOn);
+        add (Block::setup, "fx.mfx2_sw", "MFX 2",      0x02, 0, 1, 0, 1, offOn);
+        add (Block::setup, "fx.rev_sw",  "Reverb",     0x03, 0, 1, 0, 1, offOn);
+
+        auto types = [] (int count)
+        {
+            SA s;
+            for (int i = 0; i < count; ++i) s.add ("Type " + juce::String (i));
+            return s;
+        };
+
+        // MFX parameters are four nibbles carrying 12768-52768 = -20000..+20000. What each
+        // one means depends on the effect type, and the MIDI document does not say.
+        auto mfxParams = [] (Block b, const juce::String& tag, uint32_t first, int count)
+        {
+            for (int n = 1; n <= count; ++n)
+            {
+                const juce::String id   = tag + ".p" + juce::String (n);
+                const juce::String name = "P" + juce::String (n);
+                add (b, id.toRawUTF8(), name.toRawUTF8(), first + 4u * (uint32_t) (n - 1),
+                     12768, 52768, 32768, 1, {}, 4);
+            }
+        };
+
+        add (Block::mfx1, "mfx1.type",     "MFX 1 Type",    0x00, 0, 38, 0, 1, types (39));
+        add (Block::mfx1, "mfx1.rev_send", "Reverb Send",   0x01, 0, 127);
+        add (Block::mfx1, "mfx1.out",      "Output Assign", 0x02, 0, 1, 0, 1, SA { "DRY", "MFX2" });
+        mfxParams (Block::mfx1, "mfx1", kMfx1ParamBase, 32);
+
+        add (Block::mfx2, "mfx2.type",     "MFX 2 Type",    0x00, 0, 47, 0, 1, types (48));
+        add (Block::mfx2, "mfx2.rev_send", "Reverb Send",   0x01, 0, 127);
+        mfxParams (Block::mfx2, "mfx2", kMfx2ParamBase, 32);
+
+        add (Block::reverb, "rev.type", "Reverb Type", 0x00, 0, 4, 0, 1, types (5));
+        mfxParams (Block::reverb, "rev", 1, 20);
+    }
+
+    // -----------------------------------------------------------------------
     void buildPatchTMT()
     {
         const auto B = Block::patchTMT;
 
-        add (B, "tmt.structure12", "Structure 1&2", 0x00, 0, 9, -1);
+        add (B, "tmt.structure12", "Structure 1&2", 0x00, 0, 9, 0, 1,
+             SA { "Type 1", "Type 2", "Type 3", "Type 4", "Type 5", "Type 6", "Type 7", "Type 8", "Type 9", "Type 10" });
         add (B, "tmt.booster12",   "Booster 1&2",   0x01, 0, 3, 0, 1,
              SA { "0 dB", "+6 dB", "+12 dB", "+18 dB" });
-        add (B, "tmt.structure34", "Structure 3&4", 0x02, 0, 9, -1);
+        add (B, "tmt.structure34", "Structure 3&4", 0x02, 0, 9, 0, 1,
+             SA { "Type 1", "Type 2", "Type 3", "Type 4", "Type 5", "Type 6", "Type 7", "Type 8", "Type 9", "Type 10" });
         add (B, "tmt.booster34",   "Booster 3&4",   0x03, 0, 3, 0, 1,
              SA { "0 dB", "+6 dB", "+12 dB", "+18 dB" });
         add (B, "tmt.vel_control", "Velocity Control", 0x04, 0, 2, 0, 1, offOnRandom);
@@ -472,6 +516,7 @@ namespace
         buildCompEQ();
         buildSystem();
         buildRhythmNote();
+        buildEffects();
     }
 } // anonymous namespace
 
@@ -504,6 +549,10 @@ uint32_t blockByteCount (Block b)
         case Block::mastering:     return kSizeMastering;
         case Block::rhythmCommon:  return kSizeRhythmCommon;
         case Block::rhythmNote:    return kSizeRhythmNote;
+        case Block::setup:         return kSizeSetup;
+        case Block::mfx1:          return kSizeMfx1;
+        case Block::mfx2:          return kSizeMfx2;
+        case Block::reverb:        return kSizeReverb;
     }
     return 0;
 }
@@ -534,6 +583,14 @@ roland::Address blockAddress (Block b, int part, int tone, int pad)
             return temporaryPart (part) + (kTempRhythm + kRhythmCommon);
         case Block::rhythmNote:
             return temporaryPart (part) + (kTempRhythm + kRhythmTone0 + (uint32_t) pad * kRhythmNoteStride);
+        case Block::setup:
+            return setupBase();
+        case Block::mfx1:
+            return partInfoBase() + kPartInfoMFX1;
+        case Block::mfx2:
+            return partInfoBase() + kPartInfoMFX2;
+        case Block::reverb:
+            return partInfoBase() + kPartInfoReverb;
     }
     return {};
 }

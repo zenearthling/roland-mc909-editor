@@ -434,9 +434,9 @@ ParamNumber::ParamNumber (MC909EditorProcessor& p, const juce::String& id, const
     setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
 
     editor.setMultiLine (false);
-    editor.setInputRestrictions (6, "0123456789");
+    editor.setInputRestrictions (6, "0123456789-+");
     editor.setJustification (juce::Justification::centred);
-    editor.onReturnKey = [this] { commit (editor.getText().getIntValue()); editor.setVisible (false); };
+    editor.onReturnKey = [this] { commit (def.fromDisplay (editor.getText().getIntValue())); editor.setVisible (false); };
     editor.onEscapeKey = [this] { editor.setVisible (false); };
     editor.onFocusLost = [this] { editor.setVisible (false); };
     addChildComponent (editor);
@@ -464,7 +464,7 @@ void ParamNumber::paint (juce::Graphics& g)
 
     g.setColour (col::text);
     g.setFont (font (13.5f, true));
-    g.drawText (juce::String (value), box.toNearestInt(), juce::Justification::centred);
+    g.drawText (juce::String (def.toDisplay (value)), box.toNearestInt(), juce::Justification::centred);
 }
 
 void ParamNumber::commit (int raw)
@@ -491,7 +491,7 @@ void ParamNumber::mouseDrag (const juce::MouseEvent& e)
 
 void ParamNumber::mouseDoubleClick (const juce::MouseEvent&)
 {
-    editor.setText (juce::String (value), false);
+    editor.setText (juce::String (def.toDisplay (value)), false);
     editor.setVisible (true);
     editor.grabKeyboardFocus();
     editor.selectAll();

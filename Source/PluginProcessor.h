@@ -81,6 +81,7 @@ public:
     /** Name of a rhythm pad / of the kit, from the last Get (empty if not read yet). */
     juce::String getPadName (int pad) const;
     juce::String getKitName() const;
+    void requestEffects (int gapMs = 150);
     void requestRhythm (int gapMs = 100);
     int  getSelectedPart() const { return selectedPart; }
     int  getSelectedTone() const { return selectedTone; }

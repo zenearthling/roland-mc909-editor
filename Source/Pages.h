@@ -66,6 +66,71 @@ private:
     juce::Label rowLabels[4], colLabels[4];
 };
 
+/** Patch-level settings: level/pitch, playing behaviour, portamento, offsets, unison and the
+    four matrix controls. */
+class PatchPage : public ui::PageBase
+{
+public:
+    explicit PatchPage (MC909EditorProcessor&);
+    void resized() override;
+
+private:
+    ui::ParamKnob *level, *pan, *coarse, *fine, *octave, *analog;
+    ui::ParamChoice *stretch, *monoPoly, *priority, *portaMode, *portaType, *portaStart;
+    ui::ParamToggle *legato, *retrig, *portaSw, *tmtCtrl, *unison;
+    ui::ParamKnob *bendUp, *bendDown, *portaTime;
+    ui::ParamKnob *cutOfs, *resoOfs, *attOfs, *relOfs, *velOfs, *unisonFat;
+
+    struct Matrix
+    {
+        ui::ParamChoice* src;
+        ui::ParamChoice* dst[4];
+        ui::ParamNumber* sens[4];
+        juce::Label label;
+    };
+    Matrix mtx[4];
+};
+
+/** Tone Mix Table: how the four tones are combined, and each tone's key and velocity window. */
+class TmtPage : public ui::PageBase
+{
+public:
+    explicit TmtPage (MC909EditorProcessor&);
+    void resized() override;
+
+private:
+    ui::ParamChoice *structure12, *structure34, *booster12, *booster34, *velControl;
+
+    struct Tmt
+    {
+        ui::ParamToggle* sw;
+        ui::ParamNumber *keyLo, *keyHi, *kfadeLo, *kfadeHi, *velLo, *velHi, *vfadeLo, *vfadeHi;
+    };
+    Tmt tmt[4] {};
+};
+
+/** Effect switches plus MFX 1, MFX 2 and Reverb. The MIDI document gives each MFX a type and
+    32 raw parameters but not what they mean per type, so those are shown as P1... numbers. */
+class FxPage : public ui::PageBase
+{
+public:
+    explicit FxPage (MC909EditorProcessor&);
+    void resized() override;
+
+private:
+    ui::ParamToggle *sw[4];
+
+    struct Unit
+    {
+        ui::ParamChoice *type = nullptr, *out = nullptr;
+        ui::ParamNumber* send = nullptr;
+        std::vector<ui::ParamNumber*> params;
+    };
+    Unit mfx1, mfx2, rev;
+
+    void layoutUnit (Unit&, juce::Rectangle<int> content, int columns);
+};
+
 /** The 16 pads of a rhythm kit, plus the kit name underneath. */
 class PadGrid : public ui::ParamControl
 {

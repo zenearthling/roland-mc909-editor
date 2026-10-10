@@ -346,6 +346,300 @@ void OutPage::resized()
     repaint();
 }
 
+
+//==============================================================================
+PatchPage::PatchPage (MC909EditorProcessor& p) : PageBase (p)
+{
+    level  = add<ParamKnob> ("patch.level", "Level");
+    pan    = add<ParamKnob> ("patch.pan", "Pan");
+    coarse = add<ParamKnob> ("patch.coarse", "Coarse");
+    fine   = add<ParamKnob> ("patch.fine", "Fine");
+    octave = add<ParamKnob> ("patch.octave", "Octave");
+    analog = add<ParamKnob> ("patch.analog_feel", "Analog Feel");
+    stretch = add<ParamChoice> ("patch.stretch", "Stretch Tune");
+
+    monoPoly = add<ParamChoice> ("patch.mono_poly", "Mono / Poly");
+    priority = add<ParamChoice> ("patch.priority", "Priority");
+    legato   = add<ParamToggle> ("patch.legato", "Legato");
+    retrig   = add<ParamToggle> ("patch.legato_retrig", "Retrigger");
+    bendUp   = add<ParamKnob>   ("patch.bend_up", "Bend Up");
+    bendDown = add<ParamKnob>   ("patch.bend_down", "Bend Down");
+
+    portaSw    = add<ParamToggle> ("patch.porta_sw", "Portamento");
+    portaMode  = add<ParamChoice> ("patch.porta_mode", "Mode");
+    portaType  = add<ParamChoice> ("patch.porta_type", "Type");
+    portaStart = add<ParamChoice> ("patch.porta_start", "Start");
+    portaTime  = add<ParamKnob>   ("patch.porta_time", "Time");
+
+    cutOfs  = add<ParamKnob> ("patch.cutoff_ofs", "Cutoff");
+    resoOfs = add<ParamKnob> ("patch.reso_ofs", "Resonance");
+    attOfs  = add<ParamKnob> ("patch.attack_ofs", "Attack");
+    relOfs  = add<ParamKnob> ("patch.release_ofs", "Release");
+    velOfs  = add<ParamKnob> ("patch.velsens_ofs", "Vel Sens");
+    unison    = add<ParamToggle> ("patch.unison_sw", "Unison");
+    unisonFat = add<ParamKnob>   ("patch.unison_fat", "Fat");
+    tmtCtrl   = add<ParamToggle> ("patch.tmt_ctrl", "TMT Control");
+
+    for (int n = 0; n < 4; ++n)
+    {
+        const juce::String tag ("patch.mtx" + juce::String (n + 1));
+        mtx[n].src = add<ParamChoice> (tag + ".src", juce::String(), true);
+
+        for (int d = 0; d < 4; ++d)
+        {
+            mtx[n].dst[d]  = add<ParamChoice> (tag + ".dst" + juce::String (d + 1), juce::String(), true);
+            mtx[n].sens[d] = add<ParamNumber> (tag + ".sens" + juce::String (d + 1), " ");
+        }
+
+        mtx[n].label.setText ("Matrix " + juce::String (n + 1), juce::dontSendNotification);
+        mtx[n].label.setFont (font (11.0f));
+        mtx[n].label.setColour (juce::Label::textColourId, col::textDim);
+        mtx[n].label.setInterceptsMouseClicks (false, false);
+        addAndMakeVisible (mtx[n].label);
+    }
+}
+
+void PatchPage::resized()
+{
+    cards.clear();
+
+    auto r = getLocalBounds().reduced (6);
+    constexpr int gap = 8;
+
+    auto top = r.removeFromTop (juce::jmin (270, r.getHeight() * 11 / 20));
+    r.removeFromTop (gap);
+    const auto cols = splitColumns (top, { 1.25f, 1.0f, 1.1f, 1.25f }, gap);
+
+    {
+        cards.push_back ({ cols[0], "Level & Pitch" });
+        auto c = contentOf (cards.back());
+        placeKnobs (c.removeFromTop (ParamKnob::cellHeight * 2), { level, pan, coarse, fine, octave, analog }, 3);
+        c.removeFromTop (6);
+        stretch->setBounds (c.removeFromTop (40).removeFromLeft (170));
+    }
+
+    {
+        cards.push_back ({ cols[1], "Playing" });
+        auto c = contentOf (cards.back());
+        auto row = c.removeFromTop (40);
+        const int half = (row.getWidth() - 8) / 2;
+        monoPoly->setBounds (row.removeFromLeft (half));
+        row.removeFromLeft (8);
+        priority->setBounds (row);
+        c.removeFromTop (8);
+        row = c.removeFromTop (40);
+        legato->setBounds (row.removeFromLeft (half));
+        row.removeFromLeft (8);
+        retrig->setBounds (row);
+        c.removeFromTop (8);
+        placeKnobs (c.removeFromTop (ParamKnob::cellHeight), { bendUp, bendDown }, 2);
+    }
+
+    {
+        cards.push_back ({ cols[2], "Portamento" });
+        auto c = contentOf (cards.back());
+        portaSw->setBounds (c.removeFromTop (40).removeFromLeft (110));
+        c.removeFromTop (8);
+        auto row = c.removeFromTop (40);
+        const int half = (row.getWidth() - 8) / 2;
+        portaMode->setBounds (row.removeFromLeft (half));
+        row.removeFromLeft (8);
+        portaType->setBounds (row);
+        c.removeFromTop (8);
+        row = c.removeFromTop (40);
+        portaStart->setBounds (row.removeFromLeft (half));
+        c.removeFromTop (6);
+        placeKnobs (c.removeFromTop (ParamKnob::cellHeight), { portaTime }, 1);
+    }
+
+    {
+        cards.push_back ({ cols[3], "Offsets, Unison & TMT" });
+        auto c = contentOf (cards.back());
+        placeKnobs (c.removeFromTop (ParamKnob::cellHeight * 2), { cutOfs, resoOfs, attOfs, relOfs, velOfs, unisonFat }, 3);
+        c.removeFromTop (6);
+        auto row = c.removeFromTop (40);
+        unison->setBounds (row.removeFromLeft (100));
+        row.removeFromLeft (8);
+        tmtCtrl->setBounds (row.removeFromLeft (130));
+    }
+
+    {
+        cards.push_back ({ r, "Matrix Control" });
+        auto c = contentOf (cards.back());
+        constexpr int labelW = 66, srcW = 150, destW = 118, sensW = 50, rowH = 40;
+        const int blockW = destW + sensW + 8;
+
+        for (int n = 0; n < 4; ++n)
+        {
+            auto row = c.removeFromTop (rowH).withTrimmedBottom (2);
+            mtx[n].label.setBounds (row.removeFromLeft (labelW));
+            mtx[n].src->setBounds (row.removeFromLeft (srcW).withHeight (28).withY (row.getY() + 12));
+            row.removeFromLeft (10);
+
+            for (int d = 0; d < 4; ++d)
+            {
+                auto cell = row.removeFromLeft (blockW);
+                mtx[n].dst[d]->setBounds (cell.removeFromLeft (destW).withHeight (28).withY (cell.getY() + 12));
+                cell.removeFromLeft (4);
+                mtx[n].sens[d]->setBounds (cell.removeFromLeft (sensW).withHeight (38));
+            }
+        }
+    }
+
+    repaint();
+}
+
+//==============================================================================
+TmtPage::TmtPage (MC909EditorProcessor& p) : PageBase (p)
+{
+    structure12 = add<ParamChoice> ("tmt.structure12", "Structure 1 & 2");
+    booster12   = add<ParamChoice> ("tmt.booster12", "Booster 1 & 2");
+    structure34 = add<ParamChoice> ("tmt.structure34", "Structure 3 & 4");
+    booster34   = add<ParamChoice> ("tmt.booster34", "Booster 3 & 4");
+    velControl  = add<ParamChoice> ("tmt.vel_control", "Velocity Control");
+
+    for (int t = 0; t < 4; ++t)
+    {
+        const juce::String tag ("tmt.tmt" + juce::String (t + 1));
+        tmt[t].sw      = add<ParamToggle> (tag + ".sw", "Tone " + juce::String (t + 1));
+        tmt[t].keyLo   = add<ParamNumber> (tag + ".key_lo", "Key Low");
+        tmt[t].keyHi   = add<ParamNumber> (tag + ".key_hi", "Key High");
+        tmt[t].kfadeLo = add<ParamNumber> (tag + ".kfade_lo", "Fade Low");
+        tmt[t].kfadeHi = add<ParamNumber> (tag + ".kfade_hi", "Fade High");
+        tmt[t].velLo   = add<ParamNumber> (tag + ".vel_lo", "Vel Low");
+        tmt[t].velHi   = add<ParamNumber> (tag + ".vel_hi", "Vel High");
+        tmt[t].vfadeLo = add<ParamNumber> (tag + ".vfade_lo", "Fade Low");
+        tmt[t].vfadeHi = add<ParamNumber> (tag + ".vfade_hi", "Fade High");
+    }
+}
+
+void TmtPage::resized()
+{
+    cards.clear();
+
+    auto r = getLocalBounds().reduced (6);
+    constexpr int gap = 8;
+
+    auto top = r.removeFromTop (92);
+    r.removeFromTop (gap);
+
+    {
+        cards.push_back ({ top, "Structure" });
+        auto c = contentOf (cards.back());
+        const int w = (c.getWidth() - 4 * 10) / 5;
+        for (auto* ch : { structure12, booster12, structure34, booster34, velControl })
+        {
+            ch->setBounds (c.removeFromLeft (w).withHeight (40));
+            c.removeFromLeft (10);
+        }
+    }
+
+    const auto cols = splitColumns (r, { 1, 1, 1, 1 }, gap);
+    for (int t = 0; t < 4; ++t)
+    {
+        cards.push_back ({ cols[t], "TMT " + juce::String (t + 1) });
+        auto c = contentOf (cards.back());
+
+        tmt[t].sw->setBounds (c.removeFromTop (36).removeFromLeft (110));
+        c.removeFromTop (10);
+
+        const int colW = (c.getWidth() - 12) / 2;
+        auto left = c.removeFromLeft (colW);
+        c.removeFromLeft (12);
+        auto right = c;
+
+        ParamNumber* keys[] { tmt[t].keyLo, tmt[t].keyHi, tmt[t].kfadeLo, tmt[t].kfadeHi };
+        ParamNumber* vels[] { tmt[t].velLo, tmt[t].velHi, tmt[t].vfadeLo, tmt[t].vfadeHi };
+
+        for (int i = 0; i < 4; ++i)
+        {
+            keys[i]->setBounds (left.removeFromTop (40));
+            left.removeFromTop (6);
+            vels[i]->setBounds (right.removeFromTop (40));
+            right.removeFromTop (6);
+        }
+    }
+
+    repaint();
+}
+
+
+//==============================================================================
+FxPage::FxPage (MC909EditorProcessor& p) : PageBase (p)
+{
+    sw[0] = add<ParamToggle> ("fx.comp_sw", "Compressor");
+    sw[1] = add<ParamToggle> ("fx.mfx1_sw", "MFX 1");
+    sw[2] = add<ParamToggle> ("fx.mfx2_sw", "MFX 2");
+    sw[3] = add<ParamToggle> ("fx.rev_sw",  "Reverb");
+
+    auto build = [this] (Unit& u, const juce::String& tag, int count, bool hasSend, bool hasOut)
+    {
+        u.type = add<ParamChoice> (tag + ".type", "Type");
+        if (hasSend) u.send = add<ParamNumber> (tag + ".rev_send", "Rev Send");
+        if (hasOut)  u.out  = add<ParamChoice> (tag + ".out", "Output");
+
+        for (int n = 1; n <= count; ++n)
+            u.params.push_back (add<ParamNumber> (tag + ".p" + juce::String (n), "P" + juce::String (n)));
+    };
+
+    build (mfx1, "mfx1", 32, true, true);
+    build (mfx2, "mfx2", 32, true, false);
+    build (rev,  "rev",  20, false, false);
+}
+
+void FxPage::layoutUnit (Unit& u, juce::Rectangle<int> c, int columns)
+{
+    auto row = c.removeFromTop (40);
+    u.type->setBounds (row.removeFromLeft (150));
+    row.removeFromLeft (8);
+    if (u.send) { u.send->setBounds (row.removeFromLeft (70).withHeight (38)); row.removeFromLeft (8); }
+    if (u.out)  u.out->setBounds (row.removeFromLeft (90));
+
+    c.removeFromTop (10);
+    const int cellW = (c.getWidth() - (columns - 1) * 6) / columns;
+    int i = 0;
+    for (auto* pn : u.params)
+    {
+        const int col = i % columns, rowIdx = i / columns;
+        pn->setBounds (c.getX() + col * (cellW + 6), c.getY() + rowIdx * 44, cellW, 38);
+        ++i;
+    }
+}
+
+void FxPage::resized()
+{
+    cards.clear();
+
+    auto r = getLocalBounds().reduced (6);
+    constexpr int gap = 8;
+
+    auto top = r.removeFromTop (92);
+    r.removeFromTop (gap);
+
+    {
+        cards.push_back ({ top, "Effect Switches" });
+        auto c = contentOf (cards.back());
+        for (auto* t : sw)
+        {
+            t->setBounds (c.removeFromLeft (130).withHeight (36));
+            c.removeFromLeft (10);
+        }
+    }
+
+    const auto cols = splitColumns (r, { 1.0f, 1.0f, 0.8f }, gap);
+
+    cards.push_back ({ cols[0], "MFX 1  -  parameters depend on the type" });
+    layoutUnit (mfx1, contentOf (cards.back()), 6);
+
+    cards.push_back ({ cols[1], "MFX 2" });
+    layoutUnit (mfx2, contentOf (cards.back()), 6);
+
+    cards.push_back ({ cols[2], "Reverb" });
+    layoutUnit (rev, contentOf (cards.back()), 5);
+
+    repaint();
+}
+
 //==============================================================================
 PadGrid::PadGrid (MC909EditorProcessor& p) : ParamControl (p)
 {
