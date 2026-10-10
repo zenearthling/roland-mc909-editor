@@ -356,6 +356,112 @@ namespace
              SA { "2000", "2500", "3150", "4000", "5000", "6300", "8000" });
     }
 
+    // -----------------------------------------------------------------------
+    // Rhythm pad (one block per pad, 193 bytes, decoded from a dump of a real
+    // kit and checked against the unit's Rhythm Edit screens).
+    //   00-0B name | 0C-20 pad-wide head | 21.. four 29-byte tone sections
+    //   | 95.. pitch env, filter, filter env, amp env (pad-wide)
+    // -----------------------------------------------------------------------
+    void buildRhythmNote()
+    {
+        const auto B = Block::rhythmNote;
+        const SA assignType { "MULTI", "SINGLE" };
+        const SA muteGroup = []
+        {
+            SA s; s.add ("OFF");
+            for (int i = 1; i <= 31; ++i) s.add (juce::String (i));
+            return s;
+        }();
+
+        // Pad-wide head.
+        add (B, "rn.assign",     "Assign Type",       0x0C, 0, 1, 0, 1, assignType);
+        add (B, "rn.mute",       "Mute Group",        0x0D, 0, 31, 0, 1, muteGroup);
+        add (B, "rn.level",      "Tone Level",        0x0E, 0, 127);
+        add (B, "rn.coarse",     "Coarse Tune",       0x0F, 0, 127);          // shown as a key number, 60 = C4
+        add (B, "rn.fine",       "Fine Tune",         0x10, 14, 114, 64);
+        add (B, "rn.rnd_pitch",  "Random Pitch",      0x11, 0, 30);
+        add (B, "rn.pan",        "Pan",               0x12, 0, 127, 64);
+        add (B, "rn.rnd_pan",    "Random Pan Depth",  0x13, 0, 63);
+        add (B, "rn.alt_pan",    "Alternate Pan",     0x14, 1, 127, 64);
+        add (B, "rn.env_mode",   "Env Mode",          0x15, 0, 1, 0, 1, envMode);
+        add (B, "rn.rhy_level",  "Rhythm Level",      0x16, 0, 127);
+        add (B, "rn.rev_send_mfx","Reverb Send (MFX)", 0x18, 0, 127);
+        add (B, "rn.rev_send",   "Reverb Send",       0x1A, 0, 127);
+        add (B, "rn.bend_range", "Pitch Bend Range",  0x1C, 0, 48);
+
+        // Per-tone sections: the page's selected tone picks which one is edited.
+        auto tone = [&] (const char* id, const char* name, uint32_t off, int mn, int mx,
+                         int sub = 0, int mul = 1, const SA& choices = {}, int bytes = 1)
+        {
+            add (B, id, name, kRhythmToneBase + off, mn, mx, sub, mul, choices, bytes);
+            gTable.back().toneStride = kRhythmToneSpan;
+        };
+
+        tone ("rn.t.sw",         "Tone Switch",     0x00, 0, 1, 0, 1, offOn);
+        tone ("rn.t.wave_group", "Wave Group",      0x01, 0, 3, 0, 1, waveGroup);
+        tone ("rn.t.wave_gid",   "Wave Group ID",   0x02, 0, 16384, 0, 1, {}, 4);
+        tone ("rn.t.wave_l",     "Wave Number L",   0x06, 0, 16384, 0, 1, {}, 4);
+        tone ("rn.t.wave_r",     "Wave Number R",   0x0A, 0, 16384, 0, 1, {}, 4);
+        tone ("rn.t.wave_gain",  "Wave Gain",       0x0E, 0, 3, 0, 1, waveGain);
+        tone ("rn.t.fxm_sw",     "FXM Switch",      0x0F, 0, 1, 0, 1, offOn);
+        tone ("rn.t.fxm_color",  "FXM Color",       0x10, 0, 3, 0, 1, fxmColor);
+        tone ("rn.t.fxm_depth",  "FXM Depth",       0x11, 0, 16);
+        tone ("rn.t.tempo_sync", "Tempo Sync",      0x12, 0, 1, 0, 1, offOn);
+        tone ("rn.t.coarse",     "Wave Coarse Tune", 0x13, 16, 112, 64);
+        tone ("rn.t.fine",       "Wave Fine Tune",  0x14, 14, 114, 64);
+        tone ("rn.t.pan",        "Wave Pan",        0x15, 0, 127, 64);
+        tone ("rn.t.rnd_pan_sw", "Wave Rnd Pan Sw", 0x16, 0, 1, 0, 1, offOn);
+        tone ("rn.t.alt_pan_sw", "Wave Alt Pan Sw", 0x17, 0, 1, 0, 1, offOn);
+        tone ("rn.t.level",      "Wave Level",      0x18, 0, 127);
+        tone ("rn.t.vel_lo",     "Velo Range Lower", 0x19, 1, 127);
+        tone ("rn.t.vel_hi",     "Velo Range Upper", 0x1A, 1, 127);
+        tone ("rn.t.fade_lo",    "Velo Fade Lower", 0x1B, 0, 127);
+        tone ("rn.t.fade_hi",    "Velo Fade Upper", 0x1C, 0, 127);
+
+        // Pad-wide tail.
+        constexpr uint32_t T = 0x95;
+        add (B, "rn.penv_depth",   "Pitch Env Depth",  T + 0x00, 52, 76, 64);
+        add (B, "rn.penv_vsens",   "P-Env V-Sens",     T + 0x01, 1, 127, 64);
+        add (B, "rn.penv_t1_vs",   "P-Env T1 V-Sens",  T + 0x02, 1, 127, 64);
+        add (B, "rn.penv_t4_vs",   "P-Env T4 V-Sens",  T + 0x03, 1, 127, 64);
+        for (int i = 0; i < 4; ++i)
+            add (B, ("rn.penv_t" + juce::String (i + 1)).toRawUTF8(),
+                    ("Pitch Env Time " + juce::String (i + 1)).toRawUTF8(), T + 0x04 + (uint32_t) i, 0, 127);
+        for (int i = 0; i < 5; ++i)
+            add (B, ("rn.penv_l" + juce::String (i)).toRawUTF8(),
+                    ("Pitch Env Level " + juce::String (i)).toRawUTF8(), T + 0x08 + (uint32_t) i, 1, 127, 64);
+
+        add (B, "rn.tvf_type",      "Filter Type",       T + 0x0D, 0, 6, 0, 1, filterType);
+        add (B, "rn.tvf_cutoff",    "Cutoff",            T + 0x0E, 0, 127);
+        add (B, "rn.tvf_cut_vcrv",  "Cutoff Vel Curve",  T + 0x0F, 0, 7, 0, 1, velCurve);
+        add (B, "rn.tvf_cut_vsens", "Cutoff Vel Sens",   T + 0x10, 1, 127, 64);
+        add (B, "rn.tvf_reso",      "Resonance",         T + 0x11, 0, 127);
+        add (B, "rn.tvf_reso_vs",   "Resonance V-Sens",  T + 0x12, 1, 127, 64);
+
+        add (B, "rn.tvf_env_depth", "TVF Env Depth",     T + 0x13, 1, 127, 64);
+        add (B, "rn.tvf_env_vcrv",  "TVF Env Vel Curve", T + 0x14, 0, 7, 0, 1, velCurve);
+        add (B, "rn.tvf_env_vsens", "TVF Env V-Sens",    T + 0x15, 1, 127, 64);
+        add (B, "rn.tvf_t1_vs",     "TVF T1 V-Sens",     T + 0x16, 1, 127, 64);
+        add (B, "rn.tvf_t4_vs",     "TVF T4 V-Sens",     T + 0x17, 1, 127, 64);
+        for (int i = 0; i < 4; ++i)
+            add (B, ("rn.tvf_t" + juce::String (i + 1)).toRawUTF8(),
+                    ("TVF Env Time " + juce::String (i + 1)).toRawUTF8(), T + 0x18 + (uint32_t) i, 0, 127);
+        for (int i = 0; i < 5; ++i)
+            add (B, ("rn.tvf_l" + juce::String (i)).toRawUTF8(),
+                    ("TVF Env Level " + juce::String (i)).toRawUTF8(), T + 0x1C + (uint32_t) i, 0, 127);
+
+        add (B, "rn.tva_vcrv",      "TVA Vel Curve",     T + 0x21, 0, 7, 0, 1, velCurve);
+        add (B, "rn.tva_vsens",     "TVA Vel Sens",      T + 0x22, 1, 127, 64);
+        add (B, "rn.tva_t1_vs",     "TVA T1 V-Sens",     T + 0x23, 1, 127, 64);
+        add (B, "rn.tva_t4_vs",     "TVA T4 V-Sens",     T + 0x24, 1, 127, 64);
+        for (int i = 0; i < 4; ++i)
+            add (B, ("rn.tva_t" + juce::String (i + 1)).toRawUTF8(),
+                    ("TVA Env Time " + juce::String (i + 1)).toRawUTF8(), T + 0x25 + (uint32_t) i, 0, 127);
+        for (int i = 0; i < 3; ++i)
+            add (B, ("rn.tva_l" + juce::String (i + 1)).toRawUTF8(),
+                    ("TVA Env Level " + juce::String (i + 1)).toRawUTF8(), T + 0x29 + (uint32_t) i, 0, 127);
+    }
+
     void buildAll()
     {
         gTable.clear();
@@ -365,6 +471,7 @@ namespace
         buildPartInfoPart();
         buildCompEQ();
         buildSystem();
+        buildRhythmNote();
     }
 } // anonymous namespace
 
@@ -395,14 +502,17 @@ uint32_t blockByteCount (Block b)
         case Block::compEQ:        return kSizeCompEQ;
         case Block::systemCommon:  return kSizeSystemCommon;
         case Block::mastering:     return kSizeMastering;
+        case Block::rhythmCommon:  return kSizeRhythmCommon;
+        case Block::rhythmNote:    return kSizeRhythmNote;
     }
     return 0;
 }
 
-roland::Address blockAddress (Block b, int part, int tone)
+roland::Address blockAddress (Block b, int part, int tone, int pad)
 {
     part = juce::jlimit (0, 15, part);
     tone = juce::jlimit (0, 3, tone);
+    pad  = juce::jlimit (0, 15, pad);
 
     switch (b)
     {
@@ -420,6 +530,10 @@ roland::Address blockAddress (Block b, int part, int tone)
             return systemBase() + kSystemCommon;
         case Block::mastering:
             return systemBase() + kSystemMastering;
+        case Block::rhythmCommon:
+            return temporaryPart (part) + (kTempRhythm + kRhythmCommon);
+        case Block::rhythmNote:
+            return temporaryPart (part) + (kTempRhythm + kRhythmTone0 + (uint32_t) pad * kRhythmNoteStride);
     }
     return {};
 }

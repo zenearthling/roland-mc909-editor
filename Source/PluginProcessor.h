@@ -64,6 +64,13 @@ public:
 
     void setSelectedPart (int part);
     void setSelectedTone (int tone);
+    void setSelectedPad (int pad);
+    int  getSelectedPad() const { return selectedPad; }
+
+    /** Name of a rhythm pad / of the kit, from the last Get (empty if not read yet). */
+    juce::String getPadName (int pad) const;
+    juce::String getKitName() const;
+    void requestRhythm (int gapMs = 100);
     int  getSelectedPart() const { return selectedPart; }
     int  getSelectedTone() const { return selectedTone; }
 
@@ -106,6 +113,8 @@ private:
     juce::String blockKey (mc909::Block b) const;
     std::vector<uint8_t>& blockData (mc909::Block b);
     const std::vector<uint8_t>* findBlock (mc909::Block b) const;
+    juce::String blockKeyFor (mc909::Block b, int pad) const;
+    uint32_t effectiveOffset (const mc909::ParamDef& p) const;
 
     static int readValue (const std::vector<uint8_t>& data, uint32_t offset, int numBytes);
 
@@ -119,6 +128,7 @@ private:
 
     int     selectedPart = 0;
     int     selectedTone = 0;
+    int     selectedPad  = 1;     // pad 2 = key C4
     int     toneMask     = mc909::quick::kAllTones;
     uint8_t deviceId     = 0x10;
 

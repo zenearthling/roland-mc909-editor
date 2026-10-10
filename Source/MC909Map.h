@@ -47,7 +47,7 @@ constexpr uint32_t kPatchToneStride   = 2 * 128;       // 00 02 00
 
 constexpr uint32_t kRhythmCommon      = 0;
 constexpr uint32_t kRhythmTone0       = 0x5C * 128;    // key #59
-constexpr uint32_t kRhythmToneStride  = 2 * 128;
+constexpr uint32_t kRhythmNoteStride  = 2 * 128;
 
 // Block sizes (linear), used for RQ1 requests.
 constexpr uint32_t kSizePatchCommon   = 0x51;
@@ -57,6 +57,11 @@ constexpr uint32_t kSizePartInfoPart  = 0x0C;
 constexpr uint32_t kSizeSystemCommon  = 0x0A;
 constexpr uint32_t kSizeMastering     = 0x12;
 constexpr uint32_t kSizeCompEQ        = 0x0C;
+constexpr uint32_t kSizeRhythmCommon  = 0x12;
+constexpr uint32_t kSizeRhythmNote    = 0xC1;          // 5E 00 .. 5F 40 for pad 2, i.e. 128 + 65 bytes
+constexpr uint32_t kRhythmPads        = 16;
+constexpr uint32_t kRhythmToneBase    = 0x21;          // first tone section inside a pad block
+constexpr uint32_t kRhythmToneSpan    = 29;            // bytes per tone section inside a pad block
 
 // ---------------------------------------------------------------------------
 
@@ -68,7 +73,9 @@ enum class Block
     partInfoPart,
     compEQ,
     systemCommon,
-    mastering
+    mastering,
+    rhythmCommon,
+    rhythmNote
 };
 
 struct ParamDef
@@ -82,6 +89,7 @@ struct ParamDef
     int          rawMax  = 127;
     int          dispSub = 0; ///< display value = raw - dispSub
     int          dispMul = 1; ///< ...then multiplied by this
+    uint32_t     toneStride = 0; ///< >0: the parameter repeats per tone, this many bytes apart (rhythm pads)
     juce::StringArray choices; ///< non-empty => render as a combo box
 
     bool isChoice() const noexcept { return choices.size() > 0; }
@@ -102,7 +110,7 @@ std::vector<const ParamDef*> paramsForBlock (Block b);
 uint32_t blockByteCount (Block b);
 
 /** Resolve a block to an absolute address for the given part / tone. */
-roland::Address blockAddress (Block b, int part /* 0-15 */, int tone /* 0-3 */);
+roland::Address blockAddress (Block b, int part /* 0-15 */, int tone /* 0-3 */, int pad = 0 /* 0-15, rhythm */);
 
 // ---------------------------------------------------------------------------
 // Quick SysEx (model ID 5D) — the compact realtime path the hardware itself

@@ -37,6 +37,33 @@ MC909EditorProcessor::MC909EditorProcessor()
                         Block::systemCommon, Block::mastering };
     for (auto b : all)
         blockData (b).assign (mc909::blockByteCount (b), 0);
+
+   #ifdef MC909_UI_DEMO
+    // Local test aid, never compiled into release builds: replay the RX lines of a saved
+    // MIDI log through the normal receive path, so decoding can be checked without hardware.
+    if (const auto path = juce::SystemStats::getEnvironmentVariable ("MC909_REPLAY_LOG", {}); path.isNotEmpty())
+    {
+        selectedPart = (int) juce::SystemStats::getEnvironmentVariable ("MC909_REPLAY_PART", "9").getIntValue();
+
+        for (const auto& line : juce::StringArray::fromLines (juce::File (path).loadFileAsString()))
+        {
+            const auto tokens = juce::StringArray::fromTokens (line, " ", "");
+            const int rx = tokens.indexOf ("RX");
+            if (rx < 0) continue;
+
+            std::vector<uint8_t> bytes;
+            for (int i = rx + 1; i < tokens.size(); ++i)
+            {
+                const auto& t = tokens[i];
+                if (t.length() != 2 || ! t.containsOnly ("0123456789abcdef")) break;
+                bytes.push_back ((uint8_t) t.getHexValue32());
+            }
+
+            if (bytes.size() > 2 && bytes.front() == 0xF0 && bytes.back() == 0xF7)
+                sysExReceived (juce::MidiMessage::createSysExMessage (bytes.data() + 1, (int) bytes.size() - 2));
+        }
+    }
+   #endif
 }
 
 MC909EditorProcessor::~MC909EditorProcessor()
@@ -74,8 +101,22 @@ juce::String MC909EditorProcessor::blockKey (Block b) const
         case Block::compEQ:       return "compEQ";
         case Block::systemCommon: return "systemCommon";
         case Block::mastering:    return "mastering";
+        case Block::rhythmCommon: return "rhythmCommon:" + juce::String (selectedPart);
+        case Block::rhythmNote:   return blockKeyFor (b, selectedPad);
     }
     return "unknown";
+}
+
+juce::String MC909EditorProcessor::blockKeyFor (Block b, int pad) const
+{
+    jassert (b == Block::rhythmNote);
+    juce::ignoreUnused (b);
+    return "rhythmNote:" + juce::String (selectedPart) + ":" + juce::String (pad);
+}
+
+uint32_t MC909EditorProcessor::effectiveOffset (const ParamDef& p) const
+{
+    return p.offset + (p.toneStride != 0 ? (uint32_t) selectedTone * p.toneStride : 0u);
 }
 
 std::vector<uint8_t>& MC909EditorProcessor::blockData (Block b)
@@ -103,7 +144,7 @@ int MC909EditorProcessor::readValue (const std::vector<uint8_t>& data, uint32_t 
 int MC909EditorProcessor::getParameterValue (const ParamDef& p) const
 {
     if (const auto* data = findBlock (p.block))
-        return readValue (*data, p.offset, p.numBytes);
+        return readValue (*data, effectiveOffset (p), p.numBytes);
 
     return p.rawMin;
 }
@@ -115,13 +156,15 @@ void MC909EditorProcessor::setParameterValue (const ParamDef& p, int rawValue, b
     std::vector<uint8_t> bytes;
     roland::toNibbles (rawValue, p.numBytes, bytes);
 
+    const uint32_t offset = effectiveOffset (p);
+
     auto& data = blockData (p.block);
-    for (size_t i = 0; i < bytes.size() && p.offset + i < data.size(); ++i)
-        data[p.offset + i] = bytes[i];
+    for (size_t i = 0; i < bytes.size() && offset + i < data.size(); ++i)
+        data[offset + i] = bytes[i];
 
     if (sendToDevice)
     {
-        const auto addr = blockAddress (p.block, selectedPart, selectedTone) + p.offset;
+        const auto addr = blockAddress (p.block, selectedPart, selectedTone, selectedPad) + offset;
         hub.send (roland::makeDT1 (deviceId, addr, bytes.data(), bytes.size()));
     }
 
@@ -170,7 +213,7 @@ void MC909EditorProcessor::setPatchName (const juce::String& newName)
 //==============================================================================
 void MC909EditorProcessor::requestBlock (Block b, int gapMs)
 {
-    const auto addr = blockAddress (b, selectedPart, selectedTone);
+    const auto addr = blockAddress (b, selectedPart, selectedTone, selectedPad);
     hub.send (roland::makeRQ1 (deviceId, addr, mc909::blockByteCount (b)), gapMs);
 }
 
@@ -196,6 +239,24 @@ void MC909EditorProcessor::requestAll()
         requestBlock (Block::patchTone, requestGapMs);
     }
     selectedTone = savedTone;
+
+    // Rhythm kit (answered only when the part holds a rhythm set).
+    requestRhythm (100);
+}
+
+void MC909EditorProcessor::requestRhythm (int gapMs)
+{
+    hub.send (roland::makeRQ1 (deviceId, blockAddress (Block::rhythmCommon, selectedPart, 0), mc909::kSizeRhythmCommon), gapMs);
+
+    for (int pad = 0; pad < (int) mc909::kRhythmPads; ++pad)
+    {
+        const auto base = blockAddress (Block::rhythmNote, selectedPart, 0, pad);
+        hub.send (roland::makeRQ1 (deviceId, base, mc909::kSizeRhythmNote), gapMs);
+
+        // The unit leaves out any 4-byte value that straddles the edge of a reply, and
+        // tone 4's wave number sits right on the 128-byte boundary. Ask for it alone.
+        hub.send (roland::makeRQ1 (deviceId, base + (mc909::kRhythmToneBase + 3u * mc909::kRhythmToneSpan + 6u), 4), gapMs);
+    }
 }
 
 void MC909EditorProcessor::probePatchSizes()
@@ -223,16 +284,24 @@ void MC909EditorProcessor::sendAll()
 
     auto pushBlock = [&] (Block b)
     {
+        // Never push a block we have not read: that would overwrite the unit with zeros.
+        if (findBlock (b) == nullptr)
+            return;
+
         const auto& data = blockData (b);
-        const auto base  = blockAddress (b, selectedPart, selectedTone);
+        const auto base  = blockAddress (b, selectedPart, selectedTone, selectedPad);
 
         // The device wants packets of 256 bytes or fewer; 128 keeps us clear of
         // the base-128 address boundary too, which makes the maths trivial.
+        // A rhythm pad has a 4-byte value across the 128-byte edge, so its first packet is
+        // 130 bytes and keeps that value whole.
         constexpr size_t chunk = 128;
-        for (size_t pos = 0; pos < data.size(); pos += chunk)
+        for (size_t pos = 0; pos < data.size();)
         {
-            const size_t n = juce::jmin (chunk, data.size() - pos);
+            const size_t want = (b == Block::rhythmNote && pos == 0) ? 130 : chunk;
+            const size_t n = juce::jmin (want, data.size() - pos);
             out.push_back (roland::makeDT1 (deviceId, base + (uint32_t) pos, data.data() + pos, n));
+            pos += n;
         }
     };
 
@@ -247,6 +316,9 @@ void MC909EditorProcessor::sendAll()
         pushBlock (Block::patchTone);
     }
     selectedTone = savedTone;
+
+    // Rhythm pads are deliberately not part of this bulk send: every edit already goes
+    // out live, and a pad block that was only partly read must never be written back.
 
     // Bulk transfers need breathing room, so slow the queue down for the burst.
     hub.setSendInterval (20);
@@ -264,6 +336,37 @@ void MC909EditorProcessor::setSelectedTone (int tone)
 {
     selectedTone = juce::jlimit (0, 3, tone);
     editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
+void MC909EditorProcessor::setSelectedPad (int pad)
+{
+    selectedPad = juce::jlimit (0, (int) mc909::kRhythmPads - 1, pad);
+    editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
+static juce::String asciiName (const std::vector<uint8_t>* data)
+{
+    if (data == nullptr || data->size() < 12)
+        return {};
+
+    juce::String s;
+    for (int i = 0; i < 12; ++i)
+    {
+        const auto c = (*data)[(size_t) i];
+        s += juce::juce_wchar (c >= 32 && c <= 126 ? c : ' ');
+    }
+    return s.trimEnd();
+}
+
+juce::String MC909EditorProcessor::getPadName (int pad) const
+{
+    const auto it = blocks.find (blockKeyFor (Block::rhythmNote, pad));
+    return it == blocks.end() ? juce::String() : asciiName (&it->second);
+}
+
+juce::String MC909EditorProcessor::getKitName() const
+{
+    return asciiName (findBlock (Block::rhythmCommon));
 }
 
 void MC909EditorProcessor::playTestNote (int noteNumber, int velocity, bool on)
@@ -319,23 +422,24 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
     // Work out which block this belongs to by comparing absolute addresses.
     const Block candidates[] { Block::patchCommon, Block::patchTMT, Block::patchTone,
                                Block::partInfoPart, Block::compEQ,
-                               Block::systemCommon, Block::mastering };
+                               Block::systemCommon, Block::mastering,
+                               Block::rhythmCommon, Block::rhythmNote };
 
     const uint32_t incoming = dt.address.toLinear();
 
-    const int savedTone = selectedTone;
+    const int savedTone = selectedTone, savedPad = selectedPad;
     bool matched = false;
 
     for (auto b : candidates)
     {
-        const int toneLoop = (b == Block::patchTone) ? 4 : 1;
+        const int count = (b == Block::patchTone) ? 4 : (b == Block::rhythmNote) ? (int) mc909::kRhythmPads : 1;
 
-        for (int t = 0; t < toneLoop && ! matched; ++t)
+        for (int n = 0; n < count && ! matched; ++n)
         {
-            if (b == Block::patchTone)
-                selectedTone = t;
+            if (b == Block::patchTone)  selectedTone = n;
+            if (b == Block::rhythmNote) selectedPad  = n;
 
-            const uint32_t base = blockAddress (b, selectedPart, selectedTone).toLinear();
+            const uint32_t base = blockAddress (b, selectedPart, selectedTone, selectedPad).toLinear();
             const uint32_t size = mc909::blockByteCount (b);
 
             if (incoming >= base && incoming < base + size)
@@ -353,11 +457,10 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
 
         if (matched)
             break;
-
-        selectedTone = savedTone;
     }
 
     selectedTone = savedTone;
+    selectedPad  = savedPad;
 
     if (matched)
     {
@@ -379,6 +482,7 @@ void MC909EditorProcessor::getStateInformation (juce::MemoryBlock& destData)
 
     root.setProperty ("part",     selectedPart, nullptr);
     root.setProperty ("tone",     selectedTone, nullptr);
+    root.setProperty ("pad",      selectedPad,  nullptr);
     root.setProperty ("toneMask", toneMask,     nullptr);
     root.setProperty ("deviceId", (int) deviceId, nullptr);
     root.setProperty ("midiOut",  hub.currentOutputId(), nullptr);
@@ -407,6 +511,7 @@ void MC909EditorProcessor::setStateInformation (const void* data, int sizeInByte
 
     selectedPart = root.getProperty ("part", 0);
     selectedTone = root.getProperty ("tone", 0);
+    selectedPad  = juce::jlimit (0, 15, (int) root.getProperty ("pad", 1));
     toneMask     = root.getProperty ("toneMask", quick::kAllTones);
     deviceId     = (uint8_t) (int) root.getProperty ("deviceId", 0x10);
 

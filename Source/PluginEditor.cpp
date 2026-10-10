@@ -226,9 +226,11 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     pages.add (new TonePage (proc));
     pages.add (new ModPage (proc));
     pages.add (new OutPage (proc));
+    pages.add (new RhythmPage (proc));
     tabs.addTab ("Tone", tabColour, pages[0], false);
     tabs.addTab ("Mod",  tabColour, pages[1], false);
     tabs.addTab ("Out",  tabColour, pages[2], false);
+    tabs.addTab ("Rhythm", tabColour, pages[3], false);
 
     struct TabDef { const char* name; Block block; };
     const TabDef tabDefs[] {

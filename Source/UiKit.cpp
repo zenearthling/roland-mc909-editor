@@ -502,24 +502,24 @@ void ParamNumber::refresh()
 }
 
 //==============================================================================
-EnvelopeEditor::EnvelopeEditor (MC909EditorProcessor& p, Kind k)
+EnvelopeEditor::EnvelopeEditor (MC909EditorProcessor& p, Kind k, const juce::String& root)
     : ParamControl (p), kind (k)
 {
-    const char* pre = kind == Kind::pitch ? "tone.penv_" : kind == Kind::filter ? "tone.tvf_" : "tone.tva_";
+    const juce::String pre = root + (kind == Kind::pitch ? "penv_" : kind == Kind::filter ? "tvf_" : "tva_");
 
     for (int i = 0; i < 4; ++i)
-        timeDef[i] = &findParam (juce::String (pre) + "t" + juce::String (i + 1));
+        timeDef[i] = &findParam (pre + "t" + juce::String (i + 1));
 
     if (kind == Kind::amp)
     {
         // Start and end are fixed at zero; only levels 1-3 exist in the map.
         for (int i = 1; i <= 3; ++i)
-            levelDef[i] = &findParam ("tone.tva_l" + juce::String (i));
+            levelDef[i] = &findParam (pre + "l" + juce::String (i));
     }
     else
     {
         for (int i = 0; i < 5; ++i)
-            levelDef[i] = &findParam (juce::String (pre) + "l" + juce::String (i));
+            levelDef[i] = &findParam (pre + "l" + juce::String (i));
     }
 
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
@@ -718,11 +718,11 @@ void EnvelopeEditor::mouseExit (const juce::MouseEvent&)
 }
 
 //==============================================================================
-FilterCurve::FilterCurve (MC909EditorProcessor& p)
+FilterCurve::FilterCurve (MC909EditorProcessor& p, const juce::String& root)
     : ParamControl (p),
-      typeDef (findParam ("tone.tvf_type")),
-      cutoffDef (findParam ("tone.tvf_cutoff")),
-      resoDef (findParam ("tone.tvf_reso"))
+      typeDef (findParam (root + "tvf_type")),
+      cutoffDef (findParam (root + "tvf_cutoff")),
+      resoDef (findParam (root + "tvf_reso"))
 {
 }
 

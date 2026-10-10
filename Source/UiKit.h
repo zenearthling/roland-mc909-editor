@@ -168,7 +168,8 @@ class EnvelopeEditor : public ParamControl
 public:
     enum class Kind { pitch, filter, amp };
 
-    EnvelopeEditor (MC909EditorProcessor&, Kind);
+    /** `root` is the id prefix of the parameter family: "tone." for patch tones, "rn." for rhythm pads. */
+    EnvelopeEditor (MC909EditorProcessor&, Kind, const juce::String& root = "tone.");
 
     void paint (juce::Graphics&) override;
     void mouseMove (const juce::MouseEvent&) override;
@@ -198,7 +199,7 @@ private:
 class FilterCurve : public ParamControl
 {
 public:
-    explicit FilterCurve (MC909EditorProcessor&);
+    explicit FilterCurve (MC909EditorProcessor&, const juce::String& root = "tone.");
     void paint (juce::Graphics&) override;
     void refresh() override { repaint(); }
 
