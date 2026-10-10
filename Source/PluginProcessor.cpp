@@ -200,16 +200,21 @@ void MC909EditorProcessor::requestAll()
 
 void MC909EditorProcessor::probePatchSizes()
 {
-    // Kit dump: read the whole temporary rhythm area of the selected part in
-    // 128-byte pages and log every reply in full, so the layout can be decoded.
-    const int gapMs = 120;
+    // Kit dump v4: (1) pad 2 (note block at 5E 00) read in 16-byte chunks to find the
+    // exact data boundaries, (2) the following 3rd-byte ranges (13 31 xx, 13 32 xx)
+    // in 128-byte pages to find the remaining notes.
+    const int gapMs = 100;
     hub.setFullHexLogging (true);
-    hub.logLine ("--- KIT DUMP v3, part " + juce::String (selectedPart + 1) + " ---");
+    hub.logLine ("--- KIT DUMP v4, part " + juce::String (selectedPart + 1) + " ---");
 
     const uint32_t base = (mc909::temporaryPart (selectedPart) + mc909::kTempRhythm).toLinear();
 
-    for (uint32_t page = 0; page < 128; ++page)
-        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (base + page * 128u), 0x80), gapMs);
+    const uint32_t pad2 = base + 0x5Eu * 128u;
+    for (uint32_t i = 0; i < 16; ++i)
+        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (pad2 + i * 16u), 0x10), gapMs);
+
+    for (uint32_t page = 0; page < 192; ++page)
+        hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (base + 128u * 128u + page * 128u), 0x80), gapMs);
 }
 
 void MC909EditorProcessor::sendAll()
