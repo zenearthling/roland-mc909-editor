@@ -573,6 +573,12 @@ int EnvelopeEditor::hitTest (juce::Point<float> pt) const
     return best;
 }
 
+const ParamDef* EnvelopeEditor::teachDef (juce::Point<int> p) const
+{
+    const int n = hitTest (p.toFloat());
+    return n >= 0 ? levelDef[n] : nullptr;
+}
+
 void EnvelopeEditor::setIfChanged (const ParamDef& d, int raw)
 {
     raw = juce::jlimit (d.rawMin, d.rawMax, raw);

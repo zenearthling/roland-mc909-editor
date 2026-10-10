@@ -127,6 +127,13 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     addAndMakeVisible (tabs);
     addAndMakeVisible (keyboard);
 
+    macroBar = std::make_unique<MacroBar> (proc, [this] { teachModeChanged(); });
+    addAndMakeVisible (*macroBar);
+    teachOverlay = std::make_unique<TeachOverlay> (
+        [this] (juce::Point<int> p) { return pickAt (p); },
+        [this] (const mc909::ParamDef& d) { macroBar->assignArmed (d); });
+    addChildComponent (*teachOverlay);
+
     automateLabel.setFont (ui::font (10.5f, true).withExtraKerningFactor (0.12f));
     automateLabel.setColour (juce::Label::textColourId, ui::col::textDim);
     automateLabel.setJustificationType (juce::Justification::centredRight);
@@ -275,8 +282,8 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     refreshAll();
 
     setResizable (true, true);
-    setResizeLimits (1060, 700, 1700, 1200);
-    setSize (1120, 760);
+    setResizeLimits (1060, 746, 1700, 1250);
+    setSize (1120, 806);
 
     startTimerHz (12);
 }
@@ -366,6 +373,7 @@ void MC909EditorComponent::timerCallback()
 
 void MC909EditorComponent::refreshAll()
 {
+    if (macroBar != nullptr) macroBar->refresh();
     for (auto* p : pages)
         p->refresh();
 
@@ -442,6 +450,18 @@ void MC909EditorComponent::seedDemo()
 
     // Lets the screenshot script open any tab / tone.
     tabs.setCurrentTabIndex (juce::SystemStats::getEnvironmentVariable ("MC909_TAB", "0").getIntValue());
+    if (juce::SystemStats::getEnvironmentVariable ("MC909_TEACH", "0").getIntValue() != 0)
+    {
+        proc.assignMacro (0, &ui::findParam ("rn.tvf_cutoff"));
+        proc.assignMacro (1, &ui::findParam ("rn.tvf_reso"));
+        proc.assignMacro (2, &ui::findParam ("rn.pan"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+        macroBar->assignArmed (ui::findParam ("rn.fine"));
+    }
     proc.setSelectedTone (juce::SystemStats::getEnvironmentVariable ("MC909_TONE", "0").getIntValue());
 }
 #endif
@@ -506,5 +526,177 @@ void MC909EditorComponent::resized()
     r.removeFromTop (6);
     keyboard.setBounds (r.removeFromBottom (68).reduced (0, 2));
     r.removeFromBottom (4);
+    macroBar->setBounds (r.removeFromBottom (42));
     tabs.setBounds (r);
+    teachOverlay->setBounds (r.withTrimmedTop (32));
+}
+
+//==============================================================================
+void MacroBar::Cell::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    const auto* d = owner->proc.getMacroDef (slot);
+    const bool isArmed = owner->isTeaching() && owner->armedSlot() == slot;
+    const auto accent = findColour (ui::accentColourId, true);
+
+    g.setColour (isArmed ? accent.withAlpha (0.25f) : ui::col::card);
+    g.fillRoundedRectangle (r, 5.0f);
+    g.setColour (isArmed ? accent : ui::col::cardEdge);
+    g.drawRoundedRectangle (r, 5.0f, isArmed ? 2.0f : 1.0f);
+
+    auto t = getLocalBounds().reduced (8, 3);
+    g.setColour (accent);
+    g.setFont (ui::font (11.0f, true));
+    g.drawText (juce::String (slot + 1), t.removeFromLeft (14), juce::Justification::centredLeft);
+    g.setColour (d != nullptr ? ui::col::text : ui::col::textDim);
+    g.setFont (ui::font (12.0f, d != nullptr));
+    g.drawFittedText (d != nullptr ? d->name : (isArmed ? juce::String ("click a control...") : juce::String ("-")),
+                      t, juce::Justification::centredLeft, 1);
+}
+
+void MacroBar::Cell::mouseDown (const juce::MouseEvent&)
+{
+    if (owner->isTeaching())
+        owner->setArmed (slot);
+}
+
+void MacroBar::Cell::mouseDoubleClick (const juce::MouseEvent&)
+{
+    owner->proc.assignMacro (slot, nullptr);
+}
+
+MacroBar::MacroBar (MC909EditorProcessor& p, std::function<void()> onChanged)
+    : proc (p), changed (std::move (onChanged))
+{
+    teachButton.setClickingTogglesState (true);
+    teachButton.setTooltip ("Pick a knob, then click any control to assign it. In Live: Configure mode, click the plugin's Knob, turn the MPK knob.");
+    teachButton.onClick = [this]
+    {
+        armed = 0;
+        refresh();
+        changed();
+    };
+    clearButton.onClick = [this]
+    {
+        for (int i = 0; i < MC909EditorProcessor::numMacros; ++i)
+            proc.assignMacro (i, nullptr);
+    };
+    addAndMakeVisible (teachButton);
+    addAndMakeVisible (clearButton);
+
+    hint.setFont (ui::font (11.0f));
+    hint.setColour (juce::Label::textColourId, ui::col::textDim);
+    addAndMakeVisible (hint);
+
+    for (int i = 0; i < 8; ++i)
+    {
+        cells[i].owner = this;
+        cells[i].slot = i;
+        addAndMakeVisible (cells[i]);
+    }
+    refresh();
+}
+
+void MacroBar::resized()
+{
+    auto r = getLocalBounds().reduced (0, 3);
+    teachButton.setBounds (r.removeFromLeft (110).reduced (2, 3));
+    clearButton.setBounds (r.removeFromRight (80).reduced (2, 3));
+    auto h = r.removeFromRight (0);
+    juce::ignoreUnused (h);
+    const int w = r.getWidth() / 8;
+    for (auto& c : cells)
+        c.setBounds (r.removeFromLeft (w));
+}
+
+void MacroBar::paint (juce::Graphics&) {}
+
+void MacroBar::setArmed (int slot)
+{
+    armed = juce::jlimit (0, 7, slot);
+    refresh();
+}
+
+void MacroBar::stopTeaching()
+{
+    teachButton.setToggleState (false, juce::dontSendNotification);
+    refresh();
+}
+
+void MacroBar::assignArmed (const mc909::ParamDef& d)
+{
+    proc.assignMacro (armed, &d);
+    armed = (armed + 1) % 8;
+    refresh();
+}
+
+void MacroBar::refresh()
+{
+    teachButton.setButtonText (isTeaching() ? "Done teaching" : "Teach knobs");
+    for (auto& c : cells)
+        c.repaint();
+}
+
+//==============================================================================
+void TeachOverlay::paint (juce::Graphics& g)
+{
+    const auto accent = findColour (ui::accentColourId, true);
+    g.fillAll (juce::Colours::black.withAlpha (0.18f));
+    g.setColour (accent.withAlpha (0.7f));
+    g.drawRect (getLocalBounds(), 2);
+
+    if (hover != nullptr)
+    {
+        g.setFont (ui::font (13.0f, true));
+        const auto txt = "Assign: " + hover->name;
+        const int w = g.getCurrentFont().getStringWidth (txt) + 16;
+        auto box = juce::Rectangle<int> (w, 22).withCentre (pos.translated (0, -26));
+        box = box.constrainedWithin (getLocalBounds());
+        g.setColour (accent);
+        g.fillRoundedRectangle (box.toFloat(), 4.0f);
+        g.setColour (juce::Colours::black);
+        g.drawText (txt, box, juce::Justification::centred);
+    }
+}
+
+void TeachOverlay::mouseMove (const juce::MouseEvent& e)
+{
+    pos = e.getPosition();
+    hover = pickFn (pos);
+    repaint();
+}
+
+void TeachOverlay::mouseDown (const juce::MouseEvent& e)
+{
+    if (auto* d = pickFn (e.getPosition()))
+        assignFn (*d);
+    repaint();
+}
+
+const ParamDef* MC909EditorComponent::pickAt (juce::Point<int> inOverlay)
+{
+    auto* content = tabs.getCurrentContentComponent();
+    if (content == nullptr)
+        return nullptr;
+
+    const auto pt = content->getLocalPoint (teachOverlay.get(), inOverlay);
+    auto* hit = content->getComponentAt (pt);
+
+    for (auto* c = hit; c != nullptr && c != content->getParentComponent(); c = c->getParentComponent())
+    {
+        if (auto* pc = dynamic_cast<ui::ParamControl*> (c))
+            return pc->teachDef (pc->getLocalPoint (content, pt));
+        if (auto* row = dynamic_cast<ParamRow*> (c))
+            return &row->definition();
+    }
+    return nullptr;
+}
+
+void MC909EditorComponent::teachModeChanged()
+{
+    const bool on = macroBar->isTeaching();
+    teachOverlay->setVisible (on);
+    if (on)
+        teachOverlay->toFront (false);
+    resized();
 }

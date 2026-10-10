@@ -7,7 +7,8 @@
 
 class MC909EditorProcessor : public juce::AudioProcessor,
                              private MidiHub::Listener,
-                             private juce::AudioProcessorValueTreeState::Listener
+                             private juce::AudioProcessorValueTreeState::Listener,
+                             private juce::Timer
 {
 public:
     MC909EditorProcessor();
@@ -65,6 +66,16 @@ public:
     void setSelectedPart (int part);
     void setSelectedTone (int tone);
     void setSelectedPad (int pad);
+
+    //==============================================================================
+    // Assignable knobs. Eight host-visible parameters ("Knob 1".."Knob 8"); each can be
+    // pointed at any editor parameter, and then follows the part / pad / tone selected in
+    // the editor. Map them to a controller with the host's own MIDI mapping.
+    //==============================================================================
+    static constexpr int numMacros = 8;
+    const mc909::ParamDef* getMacroDef (int slot) const;
+    void assignMacro (int slot, const mc909::ParamDef* def);   // nullptr clears
+    juce::RangedAudioParameter* getMacroParameter (int slot);
     int  getSelectedPad() const { return selectedPad; }
 
     /** Name of a rhythm pad / of the kit, from the last Get (empty if not read yet). */
@@ -108,6 +119,7 @@ public:
 private:
     //==============================================================================
     void sysExReceived (const juce::MidiMessage&) override;
+    void timerCallback() override;
     void parameterChanged (const juce::String& paramId, float newValue) override;
 
     juce::String blockKey (mc909::Block b) const;
@@ -131,6 +143,13 @@ private:
     int     selectedPad  = 1;     // pad 2 = key C4
     int     toneMask     = mc909::quick::kAllTones;
     uint8_t deviceId     = 0x10;
+
+    const mc909::ParamDef* macroDef[numMacros] {};
+    std::atomic<float>     macroValue[numMacros] {};
+    std::atomic<uint32_t>  macroDirty { 0 };
+    int                    macroLastRaw[numMacros];
+    uint32_t               macroQuietUntil = 0;
+    bool                   macroSuppress = false;
 
     juce::ListenerList<EditListener> editListeners;
 

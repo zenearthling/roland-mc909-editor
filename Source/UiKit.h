@@ -79,6 +79,9 @@ public:
     explicit ParamControl (MC909EditorProcessor& p) : proc (p) {}
     virtual void refresh() = 0;
 
+    /** Which parameter a click at `localPos` would edit; used by teach mode. */
+    virtual const mc909::ParamDef* teachDef (juce::Point<int> /*localPos*/) const { return nullptr; }
+
 protected:
     MC909EditorProcessor& proc;
 };
@@ -90,6 +93,7 @@ public:
     ParamKnob (MC909EditorProcessor&, const juce::String& id, const juce::String& caption = {});
     void resized() override;
     void refresh() override;
+    const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
     static constexpr int cellWidth = 60, cellHeight = 86;
 
@@ -111,6 +115,7 @@ public:
                  const juce::String& caption = {}, bool compact = false);
     void resized() override;
     void refresh() override;
+    const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
 private:
     void comboBoxChanged (juce::ComboBox*) override;
@@ -130,6 +135,7 @@ public:
     void paint (juce::Graphics&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void refresh() override;
+    const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
 private:
     const mc909::ParamDef& def;
@@ -148,6 +154,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void refresh() override;
+    const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
 private:
     void commit (int raw);
@@ -178,6 +185,7 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void refresh() override { repaint(); }
+    const mc909::ParamDef* teachDef (juce::Point<int>) const override;
 
 private:
     juce::Rectangle<float> plot() const;
@@ -202,6 +210,10 @@ public:
     explicit FilterCurve (MC909EditorProcessor&, const juce::String& root = "tone.");
     void paint (juce::Graphics&) override;
     void refresh() override { repaint(); }
+    const mc909::ParamDef* teachDef (juce::Point<int> p) const override
+    {
+        return p.x > getWidth() * 3 / 4 ? &resoDef : &cutoffDef;
+    }
 
 private:
     const mc909::ParamDef &typeDef, &cutoffDef, &resoDef;

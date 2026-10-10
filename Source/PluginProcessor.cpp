@@ -4,6 +4,40 @@
 using namespace mc909;
 
 //==============================================================================
+namespace
+{
+    /** Host parameter whose displayed name follows what the knob is currently assigned to. */
+    class MacroParam : public juce::AudioParameterFloat
+    {
+    public:
+        explicit MacroParam (int n)
+            : juce::AudioParameterFloat (juce::ParameterID { "macro." + juce::String (n), 1 },
+                                         "Knob " + juce::String (n),
+                                         juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f),
+              number (n)
+        {}
+
+        void setLabel (const juce::String& l)
+        {
+            const juce::ScopedLock sl (lock);
+            label = l;
+        }
+
+        juce::String getName (int maxLen) const override
+        {
+            const juce::ScopedLock sl (lock);
+            const auto name = label.isEmpty() ? "Knob " + juce::String (number)
+                                              : "Knob " + juce::String (number) + " " + label;
+            return name.substring (0, maxLen);
+        }
+
+    private:
+        int number;
+        juce::CriticalSection lock;
+        juce::String label;
+    };
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout MC909EditorProcessor::makeLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
@@ -14,6 +48,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout MC909EditorProcessor::makeLa
     for (const auto& ap : quick::automatable())
         layout.add (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { ap.id, 1 }, ap.name, 0, 127, 64));
+
+    for (int n = 1; n <= numMacros; ++n)
+        layout.add (std::make_unique<MacroParam> (n));
 
     return layout;
 }
@@ -29,6 +66,14 @@ MC909EditorProcessor::MC909EditorProcessor()
 
     for (const auto& ap : quick::automatable())
         valueTree.addParameterListener (ap.id, this);
+
+    for (int n = 0; n < numMacros; ++n)
+    {
+        valueTree.addParameterListener ("macro." + juce::String (n + 1), this);
+        macroLastRaw[n] = -1;
+    }
+    macroQuietUntil = juce::Time::getMillisecondCounter() + 2000;
+    startTimer (10);
 
     // Allocate the local mirror so the UI has something coherent before the
     // first dump arrives.
@@ -68,8 +113,13 @@ MC909EditorProcessor::MC909EditorProcessor()
 
 MC909EditorProcessor::~MC909EditorProcessor()
 {
+    stopTimer();
+
     for (const auto& ap : quick::automatable())
         valueTree.removeParameterListener (ap.id, this);
+
+    for (int n = 0; n < numMacros; ++n)
+        valueTree.removeParameterListener ("macro." + juce::String (n + 1), this);
 
     hub.removeListener (this);
 }
@@ -338,6 +388,67 @@ void MC909EditorProcessor::setSelectedTone (int tone)
     editListeners.call ([] (EditListener& l) { l.modelChanged(); });
 }
 
+const ParamDef* MC909EditorProcessor::getMacroDef (int slot) const
+{
+    return juce::isPositiveAndBelow (slot, numMacros) ? macroDef[slot] : nullptr;
+}
+
+juce::RangedAudioParameter* MC909EditorProcessor::getMacroParameter (int slot)
+{
+    return valueTree.getParameter ("macro." + juce::String (slot + 1));
+}
+
+void MC909EditorProcessor::assignMacro (int slot, const ParamDef* def)
+{
+    if (! juce::isPositiveAndBelow (slot, numMacros))
+        return;
+
+    macroDef[slot] = def;
+    macroLastRaw[slot] = -1;
+
+    if (auto* mp = dynamic_cast<juce::AudioParameterFloat*> (getMacroParameter (slot)))
+    {
+        // Put the knob where the parameter currently is, without sending anything.
+        if (def != nullptr && def->rawMax > def->rawMin)
+        {
+            const float v = (float) (getParameterValue (*def) - def->rawMin) / (float) (def->rawMax - def->rawMin);
+            macroSuppress = true;
+            mp->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, v));
+            macroSuppress = false;
+        }
+
+        // Rename it in the host (see MacroParam::getName).
+        if (auto* m = dynamic_cast<MacroParam*> (mp))
+            m->setLabel (def != nullptr ? def->name : juce::String());
+    }
+
+    updateHostDisplay (ChangeDetails().withParameterInfoChanged (true));
+    editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
+void MC909EditorProcessor::timerCallback()
+{
+    const uint32_t mask = macroDirty.exchange (0);
+    if (mask == 0)
+        return;
+
+    for (int n = 0; n < numMacros; ++n)
+    {
+        if ((mask & (1u << n)) == 0 || macroDef[n] == nullptr)
+            continue;
+
+        const auto& d = *macroDef[n];
+        const int raw = juce::jlimit (d.rawMin, d.rawMax,
+                                      d.rawMin + juce::roundToInt (macroValue[n].load() * (float) (d.rawMax - d.rawMin)));
+
+        if (raw != macroLastRaw[n])
+        {
+            macroLastRaw[n] = raw;
+            setParameterValue (d, raw, true);
+        }
+    }
+}
+
 void MC909EditorProcessor::setSelectedPad (int pad)
 {
     selectedPad = juce::jlimit (0, (int) mc909::kRhythmPads - 1, pad);
@@ -384,6 +495,23 @@ void MC909EditorProcessor::detectDevice()
 //==============================================================================
 void MC909EditorProcessor::parameterChanged (const juce::String& paramId, float newValue)
 {
+    if (paramId.startsWith ("macro."))
+    {
+        const int slot = paramId.fromFirstOccurrenceOf (".", false, false).getIntValue() - 1;
+
+        // Ignore the burst of values a host replays while loading a project, and the
+        // value we set ourselves when a knob is (re)assigned.
+        if (macroSuppress || juce::Time::getMillisecondCounter() < macroQuietUntil)
+            return;
+
+        if (juce::isPositiveAndBelow (slot, numMacros))
+        {
+            macroValue[slot].store (newValue);
+            macroDirty.fetch_or (1u << slot);
+        }
+        return;
+    }
+
     // Host automation goes out as Quick SysEx: four bytes shorter than DT1 and
     // able to address several tones at once, which is what the hardware's own
     // knobs use.
@@ -497,6 +625,11 @@ void MC909EditorProcessor::getStateInformation (juce::MemoryBlock& destData)
         blocksTree.appendChild (b, nullptr);
     }
     root.appendChild (blocksTree, nullptr);
+
+    juce::ValueTree macros ("Macros");
+    for (int n = 0; n < numMacros; ++n)
+        macros.setProperty ("m" + juce::String (n), macroDef[n] != nullptr ? macroDef[n]->id : juce::String(), nullptr);
+    root.appendChild (macros, nullptr);
     root.appendChild (valueTree.copyState(), nullptr);
 
     juce::MemoryOutputStream stream (destData, false);
@@ -530,8 +663,29 @@ void MC909EditorProcessor::setStateInformation (const void* data, int sizeInByte
         }
     }
 
+    macroQuietUntil = juce::Time::getMillisecondCounter() + 2000;
+    macroDirty = 0;
+
     if (auto params = root.getChildWithName (valueTree.state.getType()); params.isValid())
         valueTree.replaceState (params);
+
+    {
+        auto macros = root.getChildWithName ("Macros");
+        for (int n = 0; n < numMacros; ++n)
+        {
+            const mc909::ParamDef* found = nullptr;
+            const auto id = macros.getProperty ("m" + juce::String (n)).toString();
+            if (id.isNotEmpty())
+                for (const auto& d : allParams())
+                    if (d.id == id) { found = &d; break; }
+
+            macroDef[n] = found;
+            macroLastRaw[n] = -1;
+            if (auto* m = dynamic_cast<MacroParam*> (getMacroParameter (n)))
+                m->setLabel (found != nullptr ? found->name : juce::String());
+        }
+        updateHostDisplay (ChangeDetails().withParameterInfoChanged (true));
+    }
 
     hub.openOutput (root.getProperty ("midiOut", "").toString());
     hub.openInput  (root.getProperty ("midiIn",  "").toString());
