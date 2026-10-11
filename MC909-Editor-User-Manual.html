@@ -236,7 +236,7 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
     <li><p>Press <strong>Get from MC-909</strong>. The plugin asks for the current part's patch, tones, effects, system settings, and the rhythm kit if that part holds one. The status shows <em>Sending...</em> while it works.</p></li>
   </ol>
   <div class="note warn"><b>Port busy?</b>Only one program can use a MIDI port at a time. If Out or In shows <strong>CLOSED</strong>, another program (or Live's own MIDI preferences) has the port. Turn its <em>Track</em> and <em>Remote</em> off for that port in Live, or close the other program.</div>
-  <p>Press <strong>Probe</strong> only when asked. It writes a diagnostic log of what the unit says back, which is what makes new pages possible. Holding <kbd>Alt</kbd> while clicking <strong>Get</strong> runs the same probe.</p>
+  <p>Holding <kbd>Alt</kbd> while clicking <strong>Get</strong> runs a diagnostic kit dump that writes to the log. You don't need it for normal use.</p>
 </section>
 
 <section id="window">
@@ -244,8 +244,8 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
   <p class="lede">One header at the top, one page at a time in the middle, and your playing tools along the bottom.</p>
   <div class="win" aria-hidden="true">
     <div class="row"><span class="pill g">MC-909 EDITOR</span><span class="pill">UM-1 &#9662;</span><span class="pill">UM-1 &#9662;</span><span class="pill">Unit 1 &#9662;</span><span class="pill">Detect</span><span class="sp"></span><span class="pill g">909 found &middot; Out ok &middot; In ok</span><span class="pill">Patch &nbsp; INIT PATCH</span></div>
-    <div class="row"><span class="pill">Part 1 &#9662;</span><span class="pill a">TONE 1</span><span class="pill">TONE 2</span><span class="pill">TONE 3</span><span class="pill">TONE 4</span><span class="sp"></span><span class="pill g">AUTOMATE &#9632;1 &#9632;2 &#9632;3 &#9632;4</span><span class="pill">Probe</span><span class="pill">Get from MC-909</span><span class="pill">Send to MC-909</span></div>
-    <div class="row"><span class="tab on">Tone</span><span class="tab">Mod</span><span class="tab">Out</span><span class="tab">Rhythm</span><span class="tab">Patch</span><span class="tab">TMT</span><span class="tab">FX</span><span class="tab">Part</span><span class="tab">Comp/EQ</span><span class="tab">System</span><span class="tab">Master</span><span class="tab">All Tone</span></div>
+    <div class="row"><span class="pill">Part 1 &#9662;</span><span class="pill a">TONE 1</span><span class="pill">TONE 2</span><span class="pill">TONE 3</span><span class="pill">TONE 4</span><span class="sp"></span><span class="pill g">AUTOMATE &#9632;1 &#9632;2 &#9632;3 &#9632;4</span><span class="pill">Get from MC-909</span><span class="pill">Send to MC-909</span></div>
+    <div class="row"><span class="tab on">Tone</span><span class="tab">Mod</span><span class="tab">Out</span><span class="tab">Rhythm</span><span class="tab">Patch</span><span class="tab">TMT</span><span class="tab">FX</span><span class="tab">Routing</span><span class="tab">Part</span><span class="tab">Comp/EQ</span><span class="tab">System</span><span class="tab">Master</span><span class="tab">All Tone</span></div>
     <div class="body">the selected page &mdash; cards of knobs, dropdowns, envelopes</div>
     <div class="row"><span class="pill">Teach knobs</span><span class="pill g">1 &#9675;</span><span class="pill g">2 &#9675;</span><span class="pill g">3 &#9675;</span><span class="pill g">&hellip;</span><span class="pill g">8 &#9675;</span><span class="pill">Clear all</span></div>
     <div class="row"><span class="pill g" style="flex:1">&#9611;&#9611;&#9611;&#9611;&#9611;&#9611; on-screen keyboard &#9611;&#9611;&#9611;&#9611;&#9611;&#9611;</span></div>
@@ -294,7 +294,9 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
     <li><p>Nothing is edited while Help is on: clicks are ignored. Click <strong>Help</strong> again to leave. Help and Teach knobs switch each other off.</p></li>
   </ol>
   <div class="note"><b>Effect parameters</b>
-    On the FX page, each box is named after the effect you picked, for example <em>Filter Cutoff</em> for SUPER FILTER, and Help describes it. Names and ranges come from the Owner's Manual. Dropdown-type parameters (such as Filter Type) open a menu. Numeric ones show the unit's stored number, so for parameters with decimal ranges, such as Rate in Hz or times in ms, compare with the unit's own screen.</div>
+    On the FX page, each box is named after the effect you picked, for example <em>Filter Cutoff</em> for SUPER FILTER, and Help describes it. Names and ranges come from the Owner's Manual. Dropdown-type parameters (such as Filter Type) open a menu. Values are shown the way the unit's own screen shows them: Hz, ms, dB, percentages, pan as L/R, balance as D:W, and delay times as milliseconds or note values (1/16, 1/4 and so on). Every one of the 47 MFX types and the four reverbs was checked against the hardware.</div>
+  <div class="note"><b>Routing page</b>
+    The Routing tab draws the unit's signal flow. Set each part's output (DRY, MFX 1, MFX 2, COMP, DIR 1, DIR 2 or RHYTHM), the compressor output, MFX 1's output (DRY or MFX 2) and every reverb send in the boxes. Blue wires show the audio path and dashed gold wires show reverb sends above 0. MFX 2 and the reverb always feed the mix. The wires redraw as you change values, and they match the unit's own Routing screen.</div>
 </section>
 
 <section id="rhythm">
@@ -429,7 +431,7 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
   <p class="lede">Some limits are the MC-909's, some are choices made to keep your sounds safe.</p>
   <div class="grid w">
     <div class="card"><h4>Storing sounds</h4><p>Roland's MIDI document lists only the temporary edit areas and has no write command. The user patch and user kit memories can't be reached by SysEx, so the plugin can't press WRITE. Press <strong>WRITE</strong> on the unit when you like a sound.</p></div>
-    <div class="card"><h4>Effect names</h4><p>Roland's MIDI document gives each MFX a type number and 32 raw parameters, but not what they mean per effect. The editor takes the names and ranges from the Owner's Manual (pp. 90 to 107), in the order printed there. Type 0 is treated as OFF and 1 to 47 follow the numbered list.</p></div>
+    <div class="card"><h4>Effect parameters</h4><p>Roland's MIDI document gives each MFX a type number and 32 raw parameters, but not what they mean per effect. The editor's names, slot order and display scales were taken from the Owner's Manual and then checked slot by slot against the unit's screen. Type 0 is treated as OFF and 1 to 47 follow the numbered list. A few values, such as the note-value range of the longest delays, rest on the same scale as the shorter ones rather than a direct check.</p></div>
     <div class="card"><h4>Send to MC-909</h4><p>Send writes the editor's copy back, but only blocks you have read with Get. It never sends zeros for unread data and does not send rhythm kits. This path has seen less testing than Get and live edits, so try it first on a throwaway patch.</p></div>
     <div class="card"><h4>Display refresh</h4><p>The unit's own screen may not redraw while you edit over MIDI. Judge by ear, or reselect the part on the unit.</p></div>
     <div class="card"><h4>Not every page is designed</h4><p>Part, Comp/EQ, System, Master and All Tone are straight parameter lists. They work, they're just plain.</p></div>
@@ -551,9 +553,13 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
      ['TMT 1 to 4','Per tone: on or off, key range with fades, velocity range with fades.']]},
    {n:'FX',t:3,d:'Effect switches, MFX 1, MFX 2 and Reverb.',c:[
      ['Effect Switches','Compressor, MFX 1, MFX 2, Reverb on or off.'],
-     ['MFX 1 / MFX 2','Type, reverb send, MFX 1 output, and raw parameters P1 to P32.'],
-     ['Reverb','Type and parameters P1 to P20.'],
-     ['Note','Parameter meanings depend on the effect type and are not in Roland\u2019s MIDI document, so they stay as raw numbers.']]},
+     ['MFX 1 / MFX 2','Type, reverb send, MFX 1 output, and the effect\u2019s own parameters, named and shown in real units.'],
+     ['Reverb','Type and its parameters, in real units.'],
+     ['Note','Unused slots of an effect are hidden. Delay times switch from milliseconds to note values at the top of their range.']]},
+   {n:'Routing',t:3,d:'The signal flow of the selected part, drawn as a diagram.',c:[
+     ['Boxes','Part output, compressor output, MFX 1 output, MFX 1 and MFX 2 types, reverb type, and every reverb send.'],
+     ['Wires','Solid blue is the audio path. Dashed gold is a reverb send above 0. They redraw as you edit.'],
+     ['Same as the unit','Mirrors the unit\u2019s Routing screen. MFX 2 and the reverb always go to the mix.']]},
    {n:'Part',t:4,d:'Mixer-style settings for the selected part.',c:[
      ['Includes','Receive switch, bank select, program number, level, pan, coarse and fine tune, sends, output select, auto sync.'],
      ['Style','A plain list of all values.']]},
@@ -601,7 +607,7 @@ footer{max-width:1240px;margin:40px auto 0;padding-top:18px;border-top:1px solid
    ['Mastering',38,371,207,418,'Mastering compressor','','<strong>Master</strong> page for the mastering compressor and <strong>Comp/EQ</strong> for the part compressor.'],
    ['Display',213,78,440,245,'The LCD','The unit may not redraw while you edit over MIDI. Use your ears, or reselect the part on the unit to refresh it.',''],
    ['Part mixer',243,252,408,400,'Sixteen part faders','','<strong>Part</strong> page for level, pan, sends and output of the selected part.'],
-   ['Effects',440,155,565,227,'Effects: type, C1, C2, COMP, MFX 1, MFX 2, REVERB','','<strong>FX</strong> page: the four switches, MFX types and raw parameters, reverb.'],
+   ['Effects',440,155,565,227,'Effects: type, C1, C2, COMP, MFX 1, MFX 2, REVERB','','<strong>FX</strong> page: the four switches, MFX types and parameters, reverb. <strong>Routing</strong> page: the signal flow.'],
    ['WRITE',440,230,490,263,'Stores the current sound into user memory','This is the only way to keep an edit. The MIDI document has no write command, so the editor can\u2019t do it for you.','No editor equivalent. Press WRITE on the unit when you like a sound.'],
    ['Velocity pads',125,437,580,480,'The 16 velocity pads','In a rhythm part these are the 16 pads of the kit.','<strong>Rhythm</strong> page pads 1 to 16. Pad 1 is key B3 (59), pad 2 is C4 (60).']
   ];
