@@ -472,6 +472,8 @@ void ParamNumber::paint (juce::Graphics& g)
         cap = spec.label;
         if (spec.unit.isNotEmpty() && spec.kind == NumberSpec::Kind::integer)
             cap << " (" << spec.unit << ")";
+        else if (spec.kind == NumberSpec::Kind::free)
+            cap << " (raw)";
     }
     g.drawText (cap, r.removeFromTop (14.0f).toNearestInt(), juce::Justification::centredLeft, true);
 
@@ -559,9 +561,22 @@ void ParamNumber::mouseDrag (const juce::MouseEvent& e)
     if (spec.active && spec.kind == NumberSpec::Kind::choice)
         return;
 
-    const int span = spec.active ? 1 : def.rawMax - def.rawMin;
+    const bool free = spec.active && spec.kind == NumberSpec::Kind::free;
+    const int span = (spec.active && ! free) ? 1 : def.rawMax - def.rawMin;
     const int step = e.mods.isShiftDown() ? 1 : juce::jmax (1, span / 400);
     commit (dragStart + (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) * step);
+}
+
+void ParamNumber::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    if (spec.active && spec.kind == NumberSpec::Kind::choice)
+        return;
+
+    const bool free = ! spec.active || spec.kind == NumberSpec::Kind::free;
+    const int unitStep = free ? (e.mods.isShiftDown() ? 1 : 250) : 1;
+    const int dir = w.deltaY > 0 ? 1 : w.deltaY < 0 ? -1 : 0;
+    if (dir != 0)
+        commit (proc.getParameterValue (def) + dir * unitStep);
 }
 
 void ParamNumber::mouseDoubleClick (const juce::MouseEvent&)

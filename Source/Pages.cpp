@@ -916,3 +916,160 @@ void RhythmPage::resized()
 
     repaint();
 }
+
+
+//==============================================================================
+RoutingPage::RoutingPage (MC909EditorProcessor& p) : PageBase (p)
+{
+    partOut  = add<ParamChoice> ("part.output", "Output");
+    partSend = add<ParamNumber> ("part.rev_send", "Reverb Send");
+    compOut  = add<ParamChoice> ("comp.output", "Output");
+    compSend = add<ParamNumber> ("comp.rev_send", "Reverb Send");
+    mfx1Type = add<ParamChoice> ("mfx1.type", "Type");
+    mfx1Out  = add<ParamChoice> ("mfx1.out", "Output");
+    mfx1Send = add<ParamNumber> ("mfx1.rev_send", "Reverb Send");
+    mfx2Type = add<ParamChoice> ("mfx2.type", "Type");
+    mfx2Send = add<ParamNumber> ("mfx2.rev_send", "Reverb Send");
+    revType  = add<ParamChoice> ("rev.type", "Type");
+}
+
+void RoutingPage::resized()
+{
+    auto r = getLocalBounds().reduced (14, 12);
+    const int outW = 110, gapX = 56;
+    const int colW = (r.getWidth() - outW - gapX * 3) / 3;
+    const int x0 = r.getX(), x1 = x0 + colW + gapX, x2 = x1 + colW + gapX, x3 = x2 + colW + gapX;
+    const int y = r.getY();
+
+    partBox = { x0, y, colW, 118 };
+    compBox = { x0, y + 150, colW, 118 };
+    mfx1Box = { x1, y, colW, 162 };
+    mfx2Box = { x1, y + 190, colW, 118 };
+    revBox  = { x2, y + 190, colW, 70 };
+    mixBox  = { x3, y, outW, 44 };
+    dir1Box = { x3, y + 100, outW, 44 };
+    dir2Box = { x3, y + 190, outW, 44 };
+
+    auto stack = [] (juce::Rectangle<int> box, std::initializer_list<juce::Component*> items, int h)
+    {
+        auto c = box.reduced (10, 6).withTrimmedTop (20);
+        for (auto* i : items) { i->setBounds (c.removeFromTop (h)); }
+    };
+
+    stack (partBox, { partOut, partSend }, 44);
+    stack (compBox, { compOut, compSend }, 44);
+    stack (mfx1Box, { mfx1Type, mfx1Out, mfx1Send }, 44);
+    stack (mfx2Box, { mfx2Type, mfx2Send }, 44);
+    stack (revBox,  { revType }, 44);
+}
+
+void RoutingPage::refresh()
+{
+    PageBase::refresh();
+    repaint();
+}
+
+void RoutingPage::paint (juce::Graphics& g)
+{
+    auto val = [this] (const char* id) { return (int) proc.getParameterValue (ui::findParam (id)); };
+
+    const int po = val ("part.output"), co = val ("comp.output"), m1o = val ("mfx1.out");
+    const auto accent = juce::Colour (0xff5cc8ff), dim = juce::Colour (0xff6b7280), rv = juce::Colour (0xffd9a441);
+
+    auto right = [] (juce::Rectangle<int> b) { return juce::Point<float> ((float) b.getRight(), (float) b.getCentreY()); };
+    auto left  = [] (juce::Rectangle<int> b) { return juce::Point<float> ((float) b.getX(), (float) b.getCentreY()); };
+    auto below = [] (juce::Rectangle<int> b) { return juce::Point<float> ((float) b.getCentreX(), (float) b.getBottom()); };
+    auto above = [] (juce::Rectangle<int> b) { return juce::Point<float> ((float) b.getCentreX(), (float) b.getY()); };
+
+    auto wire = [&g] (juce::Point<float> a, juce::Point<float> b, juce::Colour c, bool dashed, bool vertical, float lane)
+    {
+        juce::Path p;
+        p.startNewSubPath (a);
+        if (vertical) p.cubicTo (a.x, a.y + 40.0f, b.x, b.y - 40.0f, b.x, b.y);
+        else          p.cubicTo (a.x + 40.0f + lane, a.y, b.x - 40.0f - lane, b.y, b.x, b.y);
+
+        g.setColour (c);
+        juce::PathStrokeType st (dashed ? 1.4f : 2.4f);
+        if (dashed)
+        {
+            juce::Path d;
+            const float dl[] { 5.0f, 4.0f };
+            st.createDashedStroke (d, p, dl, 2);
+            g.fillPath (d);
+        }
+        else g.strokePath (p, st);
+    };
+
+    // audio paths
+    auto dest = [&] (int what, juce::Rectangle<int> src, bool sameColumnDown, int idx, float lane)
+    {
+        // what: 0 mix, 1 mfx1, 2 mfx2, 3 comp, 4 dir1, 5 dir2
+        const auto from = right (src);
+        switch (what)
+        {
+            case 0: wire (from, left (mixBox),  accent, false, false, lane); break;
+            case 1: wire (from, left (mfx1Box), accent, false, false, lane); break;
+            case 2: wire (from, left (mfx2Box), accent, false, false, lane); break;
+            case 3: wire (below (src), above (compBox), accent, false, true, 0.0f); break;
+            case 4: wire (from, left (dir1Box), accent, false, false, lane); break;
+            case 5: wire (from, left (dir2Box), accent, false, false, lane); break;
+            default: break;
+        }
+        juce::ignoreUnused (sameColumnDown, idx);
+    };
+
+    dest (po == 6 ? -1 : po, partBox, false, 0, 120.0f);
+    dest (co, compBox, false, 1, 150.0f);
+    dest (m1o == 1 ? 2 : 0, mfx1Box, false, 2, 20.0f);
+    dest (0, mfx2Box, false, 3, 20.0f);
+    wire (right (revBox), left (mixBox), accent, false, false, 20.0f);
+
+    // reverb sends
+    auto send = [&] (const char* id, juce::Rectangle<int> src)
+    {
+        if (val (id) > 0)
+            wire (below (src), above (revBox), rv, true, true, 0.0f);
+    };
+    send ("part.rev_send", partBox);
+    send ("comp.rev_send", compBox);
+    send ("mfx1.rev_send", mfx1Box);
+    send ("mfx2.rev_send", mfx2Box);
+
+    auto card = [&g] (juce::Rectangle<int> b, const juce::String& title)
+    {
+        g.setColour (ui::col::card);
+        g.fillRoundedRectangle (b.toFloat(), 8.0f);
+        g.setColour (ui::col::cardEdge);
+        g.drawRoundedRectangle (b.toFloat().reduced (0.5f), 8.0f, 1.0f);
+        g.setColour (ui::col::textDim);
+        g.setFont (ui::font (11.0f, true).withExtraKerningFactor (0.14f));
+        g.drawText (title.toUpperCase(), b.getX() + 12, b.getY() + 4, b.getWidth() - 20, 18, juce::Justification::centredLeft);
+    };
+
+    card (partBox, "Part " + juce::String (proc.getSelectedPart() + 1));
+    card (compBox, "Comp / EQ");
+    card (mfx1Box, "MFX 1");
+    card (mfx2Box, "MFX 2  (to mix)");
+    card (revBox,  "Reverb  (to mix)");
+
+    auto out = [&] (juce::Rectangle<int> b, const juce::String& t)
+    {
+        g.setColour (ui::col::well);
+        g.fillRoundedRectangle (b.toFloat(), 6.0f);
+        g.setColour (accent);
+        g.drawRoundedRectangle (b.toFloat().reduced (0.5f), 6.0f, 1.2f);
+        g.setColour (ui::col::text);
+        g.setFont (ui::font (13.0f, true));
+        g.drawText (t, b, juce::Justification::centred);
+    };
+    out (mixBox, "MIX");
+    out (dir1Box, "DIR 1");
+    out (dir2Box, "DIR 2");
+
+    g.setColour (ui::col::textDim);
+    g.setFont (ui::font (11.0f));
+    auto legend = getLocalBounds().reduced (14, 12).removeFromBottom (40);
+    g.drawText ("Solid blue = audio path.  Dashed gold = reverb send (shown when the send is above 0).  "
+                "Part output RHYTHM follows the rhythm settings, so no wire is drawn.",
+                legend, juce::Justification::bottomLeft);
+}

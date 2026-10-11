@@ -58,9 +58,9 @@ namespace
         "STEP FLANGER|@PRED;@RATE;@DEPTH;@FB;Step Rate#~#0.10-20.00 Hz or note;Phase#0#180#deg;@LG;@HG;@BAL;@LV",
         "OVERDRIVE|Drive#0#127#;Tone#0#127#;@PAN;Amp Sw#=#OFF/ON;Amp Type#=#SMALL/BUILT-IN/2-STACK/3-STACK;@LG;@HG;@LV",
         "DISTORTION|Drive#0#127#;Tone#0#127#;@PAN;Amp Sw#=#OFF/ON;Amp Type#=#SMALL/BUILT-IN/2-STACK/3-STACK;@LG;@HG;@LV",
-        "GUITAR AMP SIMULATOR|Pre Amp Sw#=#OFF/ON;Pre Amp Type#=#JC-120/Clean Twin/Match Drive/BG Lead/MS1959I/MS1959II/MS1959I+II/SLDN Lead/Metal 5150/Metal Lead/OD-1/OD-2 TURBO/Distortion/Fuzz;Pre Amp Volume#0#127#;Pre Amp Master#0#127#;Pre Amp Gain#=#Low/Mid/High;Pre Amp Bass#0#127#;Pre Amp Middle#0#127#;Pre Amp Treble#0#127#;Pre Amp Presence#0#127#;Pre Amp Bright#=#OFF/ON;Speaker Sw#=#OFF/ON;Speaker Type#=#Small1/Small2/Middle/JC-120/Built In 1/Built In 2/Built In 3/Built In 4/Built In 5/BG Stack 1/BG Stack 2/MS Stack1/MS Stack 2/Metal Stack/2 Stack/3 Stack;Mic Setting#=#1/2/3;Mic Level#0#127#;Direct Level#0#127#;@PAN;@LV",
-        "STEREO COMPRESSOR|Attack#0#127#;Threshold#0#127#;Post Gain#=#0 dB/+6 dB/+12 dB/+18 dB;@LG;@HG;@LV",
-        "STEREO LIMITER|Release#0#127#;Threshold#0#127#;Ratio#=#1.5:1/2:1/4:1/100:1;Post Gain#=#0 dB/+6 dB/+12 dB/+18 dB;@LG;@HG;@LV",
+        "GUITAR AMP SIMULATOR|Pre Amp Sw#=#OFF/ON;Pre Amp Type#=#JC-120/Clean Twin/Match Drive/BG Lead/MS1959I/MS1959II/MS1959I+II/SLDN Lead/Metal 5150/Metal Lead/OD-1/OD-2 TURBO/Distortion/Fuzz;Pre Amp Volume#0#127#;Pre Amp Master#0#127#;Pre Amp Gain#=#Low/Middle/High;Pre Amp Bass#0#127#;Pre Amp Middle#0#127#;Pre Amp Treble#0#127#;Pre Amp Presence#0#127#;Pre Amp Bright#=#OFF/ON;Speaker Sw#=#OFF/ON;Speaker Type#=#Small1/Small2/Middle/JC-120/Built In 1/Built In 2/Built In 3/Built In 4/Built In 5/BG Stack 1/BG Stack 2/MS Stack1/MS Stack 2/Metal Stack/2 Stack/3 Stack;Mic Setting#=#1/2/3;Mic Level#0#127#;Direct Level#0#127#;@PAN;@LV",
+        "COMPRESSOR|Attack#0#127#;Threshold#0#127#;Post Gain#=#0 dB/+6 dB/+12 dB/+18 dB;@LG;@HG;@LV",
+        "LIMITER|Release#0#127#;Threshold#0#127#;Ratio#=#1.5:1/2:1/4:1/100:1;Post Gain#=#0 dB/+6 dB/+12 dB/+18 dB;@LG;@HG;@LV",
         "SLICER|@RATE;Attack#0#127#;Input Sync Sw#=#OFF/ON;Input Sync Threshold#0#127#;Mode#=#LEGATO/SLASH;Shuffle#0#127#;@LV;@BEATS",
         "GATE|Threshold#0#127#;Mode#=#GATE/DUCK;@BAL;Attack Time#0#127#;Hold Time#0#127#;Release Time#0#127#;@LV",
         "LOFI NOISE|LoFi Type#1#9#;Post Filter Type#=#OFF/LPF/HPF;Post Filter Cutoff#~#200-8000 Hz;W/P Noise Type#=#WHITE/PINK;W/P Noise LPF#~#200-8000 Hz or BYPASS;W/P Noise Level#0#127#;Disc Noise Type#=#LP/EP/SP/RND;Disc Noise LPF#~#200-8000 Hz or BYPASS;Disc Noise Level#0#127#;Hum Noise Type#=#50 Hz/60 Hz;Hum Noise LPF#~#200-8000 Hz or BYPASS;Hum Noise Level#0#127#;@BAL;@LV",
@@ -68,7 +68,7 @@ namespace
         "LOFI RADIO|LoFi Type#1#9#;Post Filter Type#=#OFF/LPF/HPF;Post Filter Cutoff#~#200-8000 Hz;Radio Detune#0#127#;Radio Noise Level#0#127#;@BAL;@LV",
         "TELEPHONE|Voice Quality#0#15#;Treble#-15#15#dB;@BAL;@LV",
         "PHONOGRAPH|Signal Distortion#0#127#;Frequency Range#0#127#;Disc Type#=#LP/EP/SP;Scratch Noise Level#0#127#;Dust Noise Level#0#127#;Hiss Noise Level#0#127#;Total Noise Level#0#127#;Wow#0#127#;Flutter#0#127#;Random#0#127#;Total Wow/Flutter#0#127#;@BAL;@LV",
-        "TAPE ECHO|Mode#=#S/M/L/S+M/S+L/M+L/S+M+L;Repeat Rate#0#127#;Intensity#0#127#;Bass#-15#15#;Treble#-15#15#;Head S Pan#-64#63#;Head M Pan#-64#63#;Head L Pan#-64#63#;Tape Distortion#0#5#;Wow/Flutter Rate#0#127#;Wow/Flutter Depth#0#127#;Echo Level#0#127#;Direct Level#0#127#",
+        "TAPE ECHO|Mode#=#S/M/L/S+M/S+L/M+L/S+M+L;Repeat Rate#0#127#;Intensity#0#127#;Bass#-15#15#dB;Treble#-15#15#dB;Head S Pan#-64#63#;Head M Pan#-64#63#;Head L Pan#-64#63#;Tape Distortion#0#5#;Wow/Flutter Rate#0#127#;Wow/Flutter Depth#0#127#;Echo Level#0#127#;Direct Level#0#127#",
         "FBK PITCH SHIFTER|Mode#1#5#;Coarse#-24#12#semi;Fine#-100#100#cent;Pre Delay#~#0.0-500 ms;Feedback#-98#98#%;@PAN;@LG;@HG;@BAL;@LV",
         "2Vo PITCH SHIFTER|Mode#1#5#;Coarse A#-24#12#semi;Coarse B#-24#12#semi;Fine A#-100#100#cent;Fine B#-100#100#cent;Pre Delay A#~#0.0-500 ms;Pre Delay B#~#0.0-500 ms;Pan A#-64#63#;Pan B#-64#63#;Level Balance#~#A100:0B to A0:100B;@BAL;@LV",
         "GATED REVERB|Type#=#NORMAL/REVERSE;@PRED;Time#~#5-500 ms;Pan#-64#63#;@LG;@HG;@BAL;@LV",
@@ -85,10 +85,10 @@ namespace
 
     const char* const reverbSpec[] =
     {
-        "REVERB|Type#=#ROOM1/ROOM2/STAGE1/STAGE2/HALL1/HALL2/DELAY/PAN-DELAY;Time#0#127#;HF Damp#~#200-8000 Hz or BYPASS;Delay Feedback#0#127#;Level#0#127#",
-        "SRV ROOM|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
-        "SRV HALL|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
-        "SRV PLATE|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
+        "Reverb|Type#=#ROOM1/ROOM2/STAGE1/STAGE2/HALL1/HALL2/DELAY/PAN-DELAY;Time#0#127#;HF Damp#~#200-8000 Hz or BYPASS;Delay Feedback#0#127#;Level#0#127#",
+        "SRV Room|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
+        "SRV Hall|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
+        "SRV Plate|Pre Delay#~#0.0-100.0 ms;Time#0#127#;Size#1#8#;High Cut#~#160-12500 Hz or BYPASS;Density#0#127#;Diffusion#0#127#;LF Damp Freq#~#50-4000 Hz;LF Damp Gain#-36#0#dB;HF Damp Freq#~#4000-12500 Hz;HF Damp Gain#-36#0#dB;Level#0#127#",
     };
 
     std::vector<Param> parseParams (juce::String body)
@@ -139,7 +139,7 @@ namespace
 
         Tables()
         {
-            mfxNames.add ("OFF");
+            mfxNames.add ("THRU");
             mfx.emplace_back();
             for (auto* s : mfxSpec)
             {

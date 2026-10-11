@@ -361,7 +361,7 @@ namespace
         add (B, "comp.output",    "Comp Output",      0x01, 0, 2, 0, 1, compOutAsgn);
         add (B, "comp.attack",    "Attack",           0x02, 0, 31);
         add (B, "comp.release",   "Release",          0x03, 0, 23);
-        add (B, "comp.gain",      "Output Gain",      0x04, 0, 24);
+        add (B, "comp.gain",      "Output Gain (dB)", 0x04, 0, 24);
         add (B, "comp.threshold", "Threshold",        0x05, 0, 127);
         add (B, "comp.ratio",     "Ratio",            0x06, 0, 19);
         add (B, "comp.low_freq",  "Low Freq",         0x07, 0, 1, 0, 1, compLowFreq);

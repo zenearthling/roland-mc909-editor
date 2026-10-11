@@ -257,6 +257,8 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     tabs.addTab ("Patch", tabColour, pages[4], false);
     tabs.addTab ("TMT",   tabColour, pages[5], false);
     tabs.addTab ("FX",    tabColour, pages[6], false);
+    pages.add (new RoutingPage (proc));
+    tabs.addTab ("Routing", tabColour, pages[7], false);
 
     struct TabDef { const char* name; Block block; };
     const TabDef tabDefs[] {

@@ -136,6 +136,22 @@ private:
     void layoutUnit (Unit&, juce::Rectangle<int> content, int columns);
 };
 
+/** The unit's Routing screen as a flow chart: Part and Comp feed MFX 1 / MFX 2 / the outputs, and each
+    box has a reverb send. Wires are redrawn from the live values; every box edits its real parameters. */
+class RoutingPage : public ui::PageBase
+{
+public:
+    explicit RoutingPage (MC909EditorProcessor&);
+    void resized() override;
+    void paint (juce::Graphics&) override;
+    void refresh() override;
+
+private:
+    ui::ParamChoice *partOut, *compOut, *mfx1Type, *mfx1Out, *mfx2Type, *revType;
+    ui::ParamNumber *partSend, *compSend, *mfx1Send, *mfx2Send;
+    juce::Rectangle<int> partBox, compBox, mfx1Box, mfx2Box, revBox, mixBox, dir1Box, dir2Box;
+};
+
 /** The 16 pads of a rhythm kit, plus the kit name underneath. */
 class PadGrid : public ui::ParamControl
 {
