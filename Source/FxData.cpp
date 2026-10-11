@@ -25,7 +25,7 @@ namespace
             { "@HFD",   "HF Damp#$hzb#0#17" },
             { "@DEPTH", "Depth#0#127#" },
             { "@OFFON", "#=#OFF/ON" },
-            { "@D4",    "Delay 1#$delay#1#2022;Delay 2#$delay#1#2022;Delay 3#$delay#1#2022;Delay 4#$delay#1#2022" },
+            { "@D4",    "Delay 1#$delay4#1#4022;Delay 2#$delay4#1#4022;Delay 3#$delay4#1#4022;Delay 4#$delay4#1#4022" },
             { "@STEPS", "Step 1#0#127#;Step 2#0#127#;Step 3#0#127#;Step 4#0#127#;Step 5#0#127#;Step 6#0#127#;Step 7#0#127#;Step 8#0#127#;Step 9#0#127#;Step 10#0#127#;Step 11#0#127#;Step 12#0#127#;Step 13#0#127#;Step 14#0#127#;Step 15#0#127#;Step 16#0#127#" }
         };
         return t;
@@ -73,13 +73,13 @@ namespace
         "GATED REVERB|Type#=#NORMAL/REVERSE/SWEEP1/SWEEP2;@PRED;Time#~#raw;Pan#$pan#0#127;@LG;@HG;@BAL;@LV",
         "STEREO DELAY|Feedback Mode#=#NORMAL/CROSS;Delay Left#$delay#1#2022;Delay Right#$delay#1#2022;Phase Left#=#NORMAL/INVERT;Phase Right#=#NORMAL/INVERT;@FB;@HFD;@LG;@HG;@BAL;@LV",
         "MODULATION DELAY|Feedback Mode#=#NORMAL/CROSS;Delay Left#$delay#1#2022;Delay Right#$delay#1#2022;@FB;@HFD;@RATEH;@DEPTH;Phase#$x2#0#90;@LG;@HG;@BAL;@LV",
-        "TRIPLE TAP DELAY|Delay Left#$delay#1#2022;Delay Right#$delay#1#2022;Delay Center#$delay#1#2022;@FB;@HFD;Left Level#0#127#;Right Level#0#127#;Center Level#0#127#;@LG;@HG;@BAL;@LV",
+        "TRIPLE TAP DELAY|Delay Left#$delay4#1#4022;Delay Right#$delay4#1#4022;Delay Center#$delay4#1#4022;@FB;@HFD;Left Level#0#127#;Right Level#0#127#;Center Level#0#127#;@LG;@HG;@BAL;@LV",
         "QUADRUPLE TAP DELAY|@D4;Level 1#0#127#;Level 2#0#127#;Level 3#0#127#;Level 4#0#127#;@FB;@HFD;@BAL;@LV",
         "MULTI TAP DELAY|@D4;Pan 1#$pan#0#127;Pan 2#$pan#0#127;Pan 3#$pan#0#127;Pan 4#$pan#0#127;Level 1#0#127#;Level 2#0#127#;Level 3#0#127#;Level 4#0#127#;@FB;@HFD;@LG;@HG;@BAL;@LV",
         "REVERSE DELAY|Threshold#0#127#;Delay 1#$delay#1#2022;Delay 2#$delay#1#2022;Delay 3#$delay#1#2022;Delay 4#$delay#1#2022;Feedback 1#$fb#0#98;Feedback 4#$fb#0#98;HF Damp 1#$hzb#0#17;HF Damp 4#$hzb#0#17;Pan 1#$pan#0#127;Pan 2#$pan#0#127;Pan 3#$pan#0#127;Level 1#0#127#;Level 2#0#127#;Level 3#0#127#;@BAL;@LG;@HG;@LV",
-        "SHUFFLE DELAY|Delay#$delay#1#2022;Shuffle Rate#0#100#%;Pan A#$pan#0#127;Pan B#$pan#0#127;Level Balance#$lbal#0#100;@FB;Acceleration#0#15#;@HFD;@LG;@HG;@BAL;@LV",
-        "TIME CONTROL DELAY|Delay#$delay#1#2022;@FB;Acceleration#0#15#;@HFD;@PAN;@LG;@HG;@BAL;@LV",
-        "TIME SKIP DELAY|Delay#$delay#1#2022;Skip Rate#$r05#0#200;@FB;Acceleration#0#15#;@HFD;@PAN;@LG;@HG;@BAL;@LV",
+        "SHUFFLE DELAY|Delay#$delay4#1#4022;Shuffle Rate#0#100#%;Pan A#$pan#0#127;Pan B#$pan#0#127;Level Balance#$lbal#0#100;@FB;Acceleration#0#15#;@HFD;@LG;@HG;@BAL;@LV",
+        "TIME CONTROL DELAY|Delay#$delay4#1#4022;@FB;Acceleration#0#15#;@HFD;@PAN;@LG;@HG;@BAL;@LV",
+        "TIME SKIP DELAY|Delay#$delay4#1#4022;Skip Rate#$r05#0#200;@FB;Acceleration#0#15#;@HFD;@PAN;@LG;@HG;@BAL;@LV",
     };
 
     const char* const reverbSpec[] =
@@ -174,7 +174,7 @@ namespace
     const char* const hzList[] = { "200","250","315","400","500","630","800","1000","1250","1600","2000","2500","3150","4000","5000","6300","8000","BYPASS" };
     const char* const hzrList[] = { "160","200","250","315","400","500","630","800","1000","1250","1600","2000","2500","3150","4000","5000","6300","8000","10000","12500","BYPASS" };
     const char* const hzlfList[] = { "50","63","80","100","125","160","200","250","315","400","500","630","800","1000","1250","1600","2000","2500","3150","4000" };
-    const char* const hzhfList[] = { "4000","5000","6300","8000","10000","12500" };
+    const char* const hzhfList[] = { "4000","5000","6400","8000","10000","12500" };
     const char* const hzboList[] = { "50","56","63","71","80","90","100","112","125" };
     const char* const notes[] = { "1/64T","1/64","1/32T","1/32","1/16T","1/32.","1/16","1/8T","1/16.","1/8","1/4T","1/8.","1/4","1/2T","1/4.","1/2","1T","1/2.","1","2T","1.","2" };
 
@@ -189,7 +189,7 @@ namespace
 juce::String scaleUnit (const juce::String& s)
 {
     if (s.startsWith ("hz") || s == "r05" || s == "r10") return "Hz";
-    if (s == "pre" || s == "delay") return "ms";
+    if (s == "pre" || s == "delay" || s == "delay4") return "ms";
     if (s.startsWith ("g")) return "dB";
     if (s == "x2") return "deg";
     if (s == "fb") return "%";
@@ -228,6 +228,8 @@ juce::String formatScale (const juce::String& s, int v)
         if (v <= 100) return juce::String (10 + (v - 60)) + " ms";
         return juce::String (50 + (v - 100) * 2) + " ms";
     }
+    if (s == "delay4")
+        return v <= 4000 ? juce::String (v) + " ms" : juce::String (notes[juce::jlimit (0, 21, v - 4001)]);
     if (s == "delay")
         return v <= 2000 ? juce::String (v) + " ms" : juce::String (notes[juce::jlimit (0, 21, v - 2001)]);
     return juce::String (v);
