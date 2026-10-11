@@ -116,8 +116,13 @@ class FxPage : public ui::PageBase
 public:
     explicit FxPage (MC909EditorProcessor&);
     void resized() override;
+    void refresh() override;
 
 private:
+    void relabel (int unit, int type);
+    int lastType[3] { -1, -1, -1 };
+    juce::String unitName[3] { "MFX 1", "MFX 2", "Reverb" };
+
     ui::ParamToggle *sw[4];
 
     struct Unit

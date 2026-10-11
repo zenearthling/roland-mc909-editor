@@ -82,6 +82,10 @@ public:
     /** Which parameter a click at `localPos` would edit; used by teach mode. */
     virtual const mc909::ParamDef* teachDef (juce::Point<int> /*localPos*/) const { return nullptr; }
 
+    /** Help-mode text for controls whose meaning is not fixed by their ParamDef (the effect parameters).
+        Returns the description; fills `title` and `range`. Empty when the ParamDef text should be used. */
+    virtual juce::String customHelp (juce::String& /*title*/, juce::String& /*range*/) const { return {}; }
+
 protected:
     MC909EditorProcessor& proc;
 };
@@ -143,8 +147,19 @@ private:
     bool on = false;
 };
 
+/** What a number box shows and allows when it stands for a specific parameter of the selected effect. */
+struct NumberSpec
+{
+    enum class Kind { integer, choice, free };
+    bool active = false;
+    Kind kind = Kind::free;
+    juce::String label, unit, hint, body, typeName;
+    int lo = 0, hi = 0;
+    juce::StringArray options;
+};
+
 /** Drag-to-change integer readout, used for the wave numbers (0-16384). */
-class ParamNumber : public ParamControl
+class ParamNumber : public ParamControl, public juce::SettableTooltipClient
 {
 public:
     ParamNumber (MC909EditorProcessor&, const juce::String& id, const juce::String& caption = {});
@@ -155,9 +170,15 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void refresh() override;
     const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
+    juce::String customHelp (juce::String& title, juce::String& range) const override;
+
+    /** Relabels the box for the current effect parameter; an inactive spec restores the plain look. */
+    void setSpec (const NumberSpec&);
 
 private:
     void commit (int raw);
+    juce::String valueText() const;
+    NumberSpec spec;
 
     const mc909::ParamDef& def;
     juce::String caption;
@@ -241,7 +262,7 @@ class PageBase : public juce::Component
 public:
     explicit PageBase (MC909EditorProcessor& p) : proc (p) {}
 
-    void refresh();
+    virtual void refresh();
     void paint (juce::Graphics&) override;
 
 protected:

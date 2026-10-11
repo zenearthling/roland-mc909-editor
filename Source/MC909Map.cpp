@@ -1,4 +1,5 @@
 #include "MC909Map.h"
+#include "FxData.h"
 
 namespace mc909
 {
@@ -140,10 +141,12 @@ namespace
         add (Block::setup, "fx.mfx2_sw", "MFX 2",      0x02, 0, 1, 0, 1, offOn);
         add (Block::setup, "fx.rev_sw",  "Reverb",     0x03, 0, 1, 0, 1, offOn);
 
-        auto types = [] (int count)
+        // Value 0 is OFF; 1..47 follow the numbered list in the Owner's Manual (p. 92).
+        auto types = [] (const juce::StringArray& names, int count)
         {
             SA s;
-            for (int i = 0; i < count; ++i) s.add ("Type " + juce::String (i));
+            for (int i = 0; i < count; ++i)
+                s.add (i == 0 ? names[0] : juce::String (i).paddedLeft ('0', 2) + ": " + names[i]);
             return s;
         };
 
@@ -160,16 +163,16 @@ namespace
             }
         };
 
-        add (Block::mfx1, "mfx1.type",     "MFX 1 Type",    0x00, 0, 38, 0, 1, types (39));
+        add (Block::mfx1, "mfx1.type",     "MFX 1 Type",    0x00, 0, 38, 0, 1, types (fxdata::mfxTypeNames(), 39));
         add (Block::mfx1, "mfx1.rev_send", "Reverb Send",   0x01, 0, 127);
         add (Block::mfx1, "mfx1.out",      "Output Assign", 0x02, 0, 1, 0, 1, SA { "DRY", "MFX2" });
         mfxParams (Block::mfx1, "mfx1", kMfx1ParamBase, 32);
 
-        add (Block::mfx2, "mfx2.type",     "MFX 2 Type",    0x00, 0, 47, 0, 1, types (48));
+        add (Block::mfx2, "mfx2.type",     "MFX 2 Type",    0x00, 0, 47, 0, 1, types (fxdata::mfxTypeNames(), 48));
         add (Block::mfx2, "mfx2.rev_send", "Reverb Send",   0x01, 0, 127);
         mfxParams (Block::mfx2, "mfx2", kMfx2ParamBase, 32);
 
-        add (Block::reverb, "rev.type", "Reverb Type", 0x00, 0, 4, 0, 1, types (5));
+        add (Block::reverb, "rev.type", "Reverb Type", 0x00, 0, 4, 0, 1, types (fxdata::reverbTypeNames(), 5));
         mfxParams (Block::reverb, "rev", 1, 20);
     }
 

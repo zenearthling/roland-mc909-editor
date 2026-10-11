@@ -1,4 +1,5 @@
 #include "UiKit.h"
+#include "FxData.h"
 #include <cmath>
 #include <cstdlib>
 #include <map>
@@ -449,12 +450,30 @@ void ParamNumber::resized()
     editor.setBounds (getLocalBounds().withTrimmedTop (14).withHeight (24));
 }
 
+juce::String ParamNumber::valueText() const
+{
+    const int n = def.toDisplay (value);
+
+    if (spec.active && spec.kind == NumberSpec::Kind::choice && juce::isPositiveAndBelow (n - spec.lo, spec.options.size()))
+        return spec.options[n - spec.lo];
+
+    return juce::String (n);
+}
+
 void ParamNumber::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
     g.setColour (col::textDim);
     g.setFont (font (11.0f));
-    g.drawText (caption, r.removeFromTop (14.0f).toNearestInt(), juce::Justification::centredLeft);
+
+    juce::String cap = caption;
+    if (spec.active)
+    {
+        cap = spec.label;
+        if (spec.unit.isNotEmpty() && spec.kind == NumberSpec::Kind::integer)
+            cap << " (" << spec.unit << ")";
+    }
+    g.drawText (cap, r.removeFromTop (14.0f).toNearestInt(), juce::Justification::centredLeft, true);
 
     auto box = r.removeFromTop (24.0f).reduced (0.5f);
     g.setColour (col::well);
@@ -464,12 +483,51 @@ void ParamNumber::paint (juce::Graphics& g)
 
     g.setColour (col::text);
     g.setFont (font (13.5f, true));
-    g.drawText (juce::String (def.toDisplay (value)), box.toNearestInt(), juce::Justification::centred);
+    g.drawText (valueText(), box.toNearestInt(), juce::Justification::centred, true);
+}
+
+void ParamNumber::setSpec (const NumberSpec& s)
+{
+    spec = s;
+    setTooltip (s.active ? s.label + (s.hint.isNotEmpty() ? "  (" + s.hint + ")" : juce::String()) : juce::String());
+    repaint();
+}
+
+juce::String ParamNumber::customHelp (juce::String& title, juce::String& range) const
+{
+    if (! spec.active)
+        return {};
+
+    title = spec.label + "  -  " + spec.typeName;
+
+    switch (spec.kind)
+    {
+        case NumberSpec::Kind::integer:
+            range = "Range: " + juce::String (spec.lo) + " to " + juce::String (spec.hi)
+                    + (spec.unit.isNotEmpty() ? " " + spec.unit : juce::String());
+            break;
+        case NumberSpec::Kind::choice:
+            range = spec.options.size() > 8 ? "Choose from " + juce::String (spec.options.size()) + " options."
+                                            : "Options: " + spec.options.joinIntoString (", ");
+            break;
+        case NumberSpec::Kind::free:
+            range = "Manual range: " + spec.hint + ". The box shows the raw stored number.";
+            break;
+    }
+
+    auto body = fxdata::labelHelp (spec.label);
+    if (body.isEmpty())
+        body = "A parameter of the " + spec.typeName + " effect. The Owner's Manual describes it under that effect.";
+    return body;
 }
 
 void ParamNumber::commit (int raw)
 {
-    raw = juce::jlimit (def.rawMin, def.rawMax, raw);
+    if (spec.active && spec.kind != NumberSpec::Kind::free)
+        raw = juce::jlimit (def.dispSub + spec.lo, def.dispSub + spec.hi, raw);
+    else
+        raw = juce::jlimit (def.rawMin, def.rawMax, raw);
+
     if (raw != proc.getParameterValue (def))
         proc.setParameterValue (def, raw);
 
@@ -480,17 +538,37 @@ void ParamNumber::commit (int raw)
 void ParamNumber::mouseDown (const juce::MouseEvent&)
 {
     dragStart = proc.getParameterValue (def);
+
+    if (spec.active && spec.kind == NumberSpec::Kind::choice)
+    {
+        juce::PopupMenu m;
+        for (int i = 0; i < spec.options.size(); ++i)
+            m.addItem (i + 1, spec.options[i], true, def.toDisplay (value) - spec.lo == i);
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this),
+                         [safe = juce::Component::SafePointer<ParamNumber> (this)] (int result)
+                         {
+                             if (safe != nullptr && result > 0)
+                                 safe->commit (safe->def.dispSub + safe->spec.lo + result - 1);
+                         });
+    }
 }
 
 void ParamNumber::mouseDrag (const juce::MouseEvent& e)
 {
-    const int span = def.rawMax - def.rawMin;
+    if (spec.active && spec.kind == NumberSpec::Kind::choice)
+        return;
+
+    const int span = spec.active ? 1 : def.rawMax - def.rawMin;
     const int step = e.mods.isShiftDown() ? 1 : juce::jmax (1, span / 400);
     commit (dragStart + (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) * step);
 }
 
 void ParamNumber::mouseDoubleClick (const juce::MouseEvent&)
 {
+    if (spec.active && spec.kind == NumberSpec::Kind::choice)
+        return;
+
     editor.setText (juce::String (def.toDisplay (value)), false);
     editor.setVisible (true);
     editor.grabKeyboardFocus();

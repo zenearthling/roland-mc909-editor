@@ -1,4 +1,5 @@
 #include "Pages.h"
+#include "FxData.h"
 
 using namespace ui;
 
@@ -587,6 +588,55 @@ FxPage::FxPage (MC909EditorProcessor& p) : PageBase (p)
     build (rev,  "rev",  20, false, false);
 }
 
+void FxPage::refresh()
+{
+    PageBase::refresh();
+
+    Unit* units[3] { &mfx1, &mfx2, &rev };
+    const char* tags[3] { "mfx1.type", "mfx2.type", "rev.type" };
+
+    for (int i = 0; i < 3; ++i)
+    {
+        const int type = proc.getParameterValue (ui::findParam (tags[i]));
+        if (type != lastType[i])
+            relabel (i, type);
+    }
+}
+
+void FxPage::relabel (int unit, int type)
+{
+    lastType[unit] = type;
+    Unit& u = unit == 0 ? mfx1 : unit == 1 ? mfx2 : rev;
+
+    const auto& names  = unit == 2 ? fxdata::reverbTypeNames() : fxdata::mfxTypeNames();
+    const auto& params = unit == 2 ? fxdata::reverbParams (type) : fxdata::mfxParams (type);
+    const juce::String typeName = juce::isPositiveAndBelow (type, names.size()) ? names[type] : juce::String ("?");
+
+    const char* heads[3] { "MFX 1", "MFX 2", "Reverb" };
+    unitName[unit] = juce::String (heads[unit]) + "  -  " + typeName;
+
+    for (size_t i = 0; i < u.params.size(); ++i)
+    {
+        ui::NumberSpec s;
+        if (i < params.size())
+        {
+            const auto& pr = params[i];
+            s.active = true;
+            s.label = pr.label;
+            s.typeName = typeName;
+            s.kind = pr.kind == fxdata::Param::Kind::integer ? ui::NumberSpec::Kind::integer
+                   : pr.kind == fxdata::Param::Kind::choice  ? ui::NumberSpec::Kind::choice
+                                                             : ui::NumberSpec::Kind::free;
+            s.lo = pr.lo; s.hi = pr.hi; s.options = pr.options; s.unit = pr.unit; s.hint = pr.hint;
+        }
+        u.params[i]->setSpec (s);
+        u.params[i]->setVisible (s.active);
+    }
+
+    repaint();
+    resized();
+}
+
 void FxPage::layoutUnit (Unit& u, juce::Rectangle<int> c, int columns)
 {
     auto row = c.removeFromTop (40);
@@ -628,14 +678,14 @@ void FxPage::resized()
 
     const auto cols = splitColumns (r, { 1.0f, 1.0f, 0.8f }, gap);
 
-    cards.push_back ({ cols[0], "MFX 1  -  parameters depend on the type" });
-    layoutUnit (mfx1, contentOf (cards.back()), 6);
+    cards.push_back ({ cols[0], unitName[0] });
+    layoutUnit (mfx1, contentOf (cards.back()), 3);
 
-    cards.push_back ({ cols[1], "MFX 2" });
-    layoutUnit (mfx2, contentOf (cards.back()), 6);
+    cards.push_back ({ cols[1], unitName[1] });
+    layoutUnit (mfx2, contentOf (cards.back()), 3);
 
-    cards.push_back ({ cols[2], "Reverb" });
-    layoutUnit (rev, contentOf (cards.back()), 5);
+    cards.push_back ({ cols[2], unitName[2] });
+    layoutUnit (rev, contentOf (cards.back()), 3);
 
     repaint();
 }

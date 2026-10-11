@@ -111,15 +111,21 @@ private:
 class HelpOverlay : public juce::Component
 {
 public:
-    explicit HelpOverlay (std::function<const mc909::ParamDef*(juce::Point<int>)> pick) : pickFn (std::move (pick)) {}
+    using Lookup = std::function<bool (juce::Point<int>, juce::String& title, juce::String& range, juce::String& body)>;
+
+    explicit HelpOverlay (Lookup l) : lookup (std::move (l)) {}
     void paint (juce::Graphics&) override;
-    void mouseMove (const juce::MouseEvent& e) override { pos = e.getPosition(); hover = pickFn (pos); repaint(); }
+    void mouseMove (const juce::MouseEvent& e) override { pos = e.getPosition(); found = lookup (pos, title, range, body); repaint(); }
     void mouseDrag (const juce::MouseEvent& e) override { mouseMove (e); }
-    void mouseExit (const juce::MouseEvent&) override { hover = nullptr; repaint(); }
-    void demoHover (const mc909::ParamDef* d, juce::Point<int> p) { hover = d; pos = p; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { found = false; repaint(); }
+    void demoHover (const juce::String& t, const juce::String& r, const juce::String& b, juce::Point<int> p)
+    {
+        title = t; range = r; body = b; pos = p; found = t.isNotEmpty(); repaint();
+    }
 private:
-    std::function<const mc909::ParamDef*(juce::Point<int>)> pickFn;
-    const mc909::ParamDef* hover = nullptr;
+    Lookup lookup;
+    bool found = false;
+    juce::String title, range, body;
     juce::Point<int> pos;
 };
 
@@ -136,7 +142,11 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    static constexpr int kBaseW = 1120, kBaseH = 824;
+
 private:
+    void paintContent (juce::Graphics&);
+    void zoomBy (float factor);
     void modelChanged() override;
     void deviceDetected (const juce::String& inputId) override;
     void timerCallback() override;
@@ -156,6 +166,15 @@ private:
     ui::SynthLookAndFeel lookAndFeel;
 
     MC909EditorProcessor& proc;
+
+    /** Holds every visible child, laid out at kBaseW x kBaseH and scaled to the window. Declared before the
+        children so it is destroyed after them. */
+    struct Content : juce::Component
+    {
+        std::function<void (juce::Graphics&)> onPaint;
+        void paint (juce::Graphics& g) override { if (onPaint) onPaint (g); }
+    } content;
+    juce::TextButton zoomOutButton { "A-" }, zoomInButton { "A+" };
 
     juce::ComboBox midiOutBox, midiInBox, deviceIdBox, partBox;
     juce::TextButton toneButtons[4];
@@ -178,6 +197,7 @@ private:
     std::unique_ptr<TeachOverlay> teachOverlay;
     std::unique_ptr<HelpOverlay> helpOverlay;
     const mc909::ParamDef* pickAt (juce::Point<int> inEditor, juce::Component* overlay = nullptr);
+    bool helpAt (juce::Point<int> inOverlay, juce::String& title, juce::String& range, juce::String& body);
     void teachModeChanged();
     void helpModeChanged();
 
