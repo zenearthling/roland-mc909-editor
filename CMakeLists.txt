@@ -45,6 +45,7 @@ target_sources(MC909Editor PRIVATE
     Source/Pages.cpp
     Source/PluginEditor.cpp
     Source/Help.cpp
+    Source/FxData.cpp
 )
 
 target_compile_definitions(MC909Editor PUBLIC
