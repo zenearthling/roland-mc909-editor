@@ -618,7 +618,7 @@ void FxPage::relabel (int unit, int type)
     for (size_t i = 0; i < u.params.size(); ++i)
     {
         ui::NumberSpec s;
-        if (i < params.size())
+        if (i < params.size() && params[i].label != "-")
         {
             const auto& pr = params[i];
             s.active = true;
@@ -650,6 +650,8 @@ void FxPage::layoutUnit (Unit& u, juce::Rectangle<int> c, int columns)
     int i = 0;
     for (auto* pn : u.params)
     {
+        if (! pn->isVisible())
+            continue;
         const int col = i % columns, rowIdx = i / columns;
         pn->setBounds (c.getX() + col * (cellW + 6), c.getY() + rowIdx * 44, cellW, 38);
         ++i;

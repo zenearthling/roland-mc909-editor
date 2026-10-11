@@ -53,7 +53,7 @@ namespace
         "HEXA-CHORUS|@PRED;@RATEH;@DEPTH;Pre Delay Deviation#0#20#;Depth Deviation#-20#20#;Pan Deviation#0#20#;@BAL;@LV",
         "TREMOLO CHORUS|@PRED;Chorus Rate#~#0.05-10.00 Hz;Chorus Depth#0#127#;Tremolo Rate#~#0.05-10.00 Hz;Tremolo Separation#0#127#;Tremolo Phase#0#90#x2 deg;@BAL;@LV",
         "SPACE-D|@PRED;@RATEH;@DEPTH;Phase#0#90#x2 deg;@LG;@HG;@BAL;@LV",
-        "STEREO CHORUS|Filter Type#=#OFF/LPF/HPF;Cutoff Freq#~#200-8000 Hz;@PRED;@RATEH;@DEPTH;Phase#0#90#x2 deg;@LG;@HG;@BAL;@LV",
+        "STEREO CHORUS|Filter Type#=#OFF/LPF/HPF;Cutoff Freq#~#200-8000 Hz;@PRED;@RATEH;@DEPTH;Phase#0#90#x2 deg;-#~#unused slot;@LG;@HG;@BAL;@LV",
         "STEREO FLANGER|Filter Type#=#OFF/LPF/HPF;Cutoff Freq#~#200-8000 Hz;@PRED;@RATE;@DEPTH;Phase#0#90#x2 deg;@FB;@LG;@HG;@BAL;@LV",
         "STEP FLANGER|@PRED;@RATE;@DEPTH;@FB;Step Rate#~#0.10-20.00 Hz or note;Phase#0#90#x2 deg;@LG;@HG;@BAL;@LV",
         "OVERDRIVE|Drive#0#127#;Tone#0#127#;@PAN;Amp Sw#=#OFF/ON;Amp Type#=#SMALL/BUILT-IN/2-STACK/3-STACK;@LG;@HG;@LV",
