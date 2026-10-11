@@ -17,6 +17,7 @@ namespace fxdata
         juce::StringArray options;     ///< choice
         juce::String unit;             ///< integer: "dB", "%", ...
         juce::String hint;             ///< free: range as printed in the manual
+        juce::String scale;            ///< integer: named display scale (see formatScale); lo..hi are slot values
     };
 
     /** Value 0 is "OFF"; values 1..47 follow the manual's numbered list. */
@@ -26,6 +27,10 @@ namespace fxdata
     /** Parameters of an MFX type (value 1..47) or reverb type (value 1..4). Empty for OFF / out of range. */
     const std::vector<Param>& mfxParams (int type);
     const std::vector<Param>& reverbParams (int type);
+
+    /** Text the unit shows for slot value v under a named scale, and the unit shown in the caption. */
+    juce::String formatScale (const juce::String& scale, int v);
+    juce::String scaleUnit (const juce::String& scale);
 
     /** Short explanation for a parameter label, or empty. */
     juce::String labelHelp (const juce::String& label);

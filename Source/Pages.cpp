@@ -648,7 +648,7 @@ void FxPage::relabel (int unit, int type)
             s.kind = pr.kind == fxdata::Param::Kind::integer ? ui::NumberSpec::Kind::integer
                    : pr.kind == fxdata::Param::Kind::choice  ? ui::NumberSpec::Kind::choice
                                                              : ui::NumberSpec::Kind::free;
-            s.lo = pr.lo; s.hi = pr.hi; s.options = pr.options; s.unit = pr.unit; s.hint = pr.hint;
+            s.lo = pr.lo; s.hi = pr.hi; s.options = pr.options; s.unit = pr.unit; s.hint = pr.hint; s.scale = pr.scale;
         }
         u.params[i]->setSpec (s);
         u.params[i]->setVisible (s.active);

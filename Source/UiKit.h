@@ -153,7 +153,7 @@ struct NumberSpec
     enum class Kind { integer, choice, free };
     bool active = false;
     Kind kind = Kind::free;
-    juce::String label, unit, hint, body, typeName;
+    juce::String label, unit, hint, body, typeName, scale;
     int lo = 0, hi = 0;
     juce::StringArray options;
 };

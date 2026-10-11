@@ -457,6 +457,9 @@ juce::String ParamNumber::valueText() const
     if (spec.active && spec.kind == NumberSpec::Kind::choice && juce::isPositiveAndBelow (n - spec.lo, spec.options.size()))
         return spec.options[n - spec.lo];
 
+    if (spec.active && spec.scale.isNotEmpty())
+        return fxdata::formatScale (spec.scale, n);
+
     return juce::String (n);
 }
 
@@ -505,8 +508,11 @@ juce::String ParamNumber::customHelp (juce::String& title, juce::String& range) 
     switch (spec.kind)
     {
         case NumberSpec::Kind::integer:
-            range = "Range: " + juce::String (spec.lo) + " to " + juce::String (spec.hi)
-                    + (spec.unit.isNotEmpty() ? " " + spec.unit : juce::String());
+            if (spec.scale.isNotEmpty())
+                range = "Range: " + fxdata::formatScale (spec.scale, spec.lo) + " to " + fxdata::formatScale (spec.scale, spec.hi);
+            else
+                range = "Range: " + juce::String (spec.lo) + " to " + juce::String (spec.hi)
+                        + (spec.unit.isNotEmpty() ? " " + spec.unit : juce::String());
             break;
         case NumberSpec::Kind::choice:
             range = spec.options.size() > 8 ? "Choose from " + juce::String (spec.options.size()) + " options."
