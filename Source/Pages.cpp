@@ -583,9 +583,30 @@ FxPage::FxPage (MC909EditorProcessor& p) : PageBase (p)
             u.params.push_back (add<ParamNumber> (tag + ".p" + juce::String (n), "P" + juce::String (n)));
     };
 
+    const char* probeNames[3] { "Probe MFX 1", "Probe MFX 2", "Probe Reverb" };
+    for (int i = 0; i < 3; ++i)
+    {
+        probeBtn[i].setButtonText (probeNames[i]);
+        probeBtn[i].setTooltip ("Test tool: writes 1, 2, 3 ... into the effect's raw slots so a photo of the unit's screen shows "
+                                "which slot feeds which row. Changes the unit's edit buffer only; re-select the patch to undo.");
+        probeBtn[i].onClick = [this, i] { probe (i); };
+        addAndMakeVisible (probeBtn[i]);
+    }
+
     build (mfx1, "mfx1", 32, true, true);
     build (mfx2, "mfx2", 32, true, false);
     build (rev,  "rev",  20, false, false);
+}
+
+void FxPage::probe (int unit)
+{
+    const char* tags[3] { "mfx1", "mfx2", "rev" };
+    const int count = unit == 2 ? 20 : 32;
+    for (int n = 1; n <= count; ++n)
+    {
+        const auto& def = ui::findParam (juce::String (tags[unit]) + ".p" + juce::String (n));
+        proc.setParameterValue (def, def.dispSub + n);
+    }
 }
 
 void FxPage::refresh()
@@ -675,6 +696,12 @@ void FxPage::resized()
         {
             t->setBounds (c.removeFromLeft (130).withHeight (36));
             c.removeFromLeft (10);
+        }
+        c.removeFromLeft (30);
+        for (auto& b : probeBtn)
+        {
+            b.setBounds (c.removeFromLeft (110).withHeight (30));
+            c.removeFromLeft (6);
         }
     }
 

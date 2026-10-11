@@ -124,6 +124,8 @@ private:
     juce::String unitName[3] { "MFX 1", "MFX 2", "Reverb" };
 
     ui::ParamToggle *sw[4];
+    juce::TextButton probeBtn[3];
+    void probe (int unit);
 
     struct Unit
     {
