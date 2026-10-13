@@ -46,6 +46,9 @@ target_sources(MC909Editor PRIVATE
     Source/PluginEditor.cpp
     Source/Help.cpp
     Source/FxData.cpp
+    Source/SearchIndex.cpp
+    Source/SearchData.cpp
+    Source/SearchOverlay.cpp
 )
 
 target_compile_definitions(MC909Editor PUBLIC

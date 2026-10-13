@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "UiKit.h"
 #include "Pages.h"
+#include "SearchOverlay.h"
 //==============================================================================
 /** One row: name on the left, control on the right. Continuous parameters get a
     slider, enumerated ones a combo box, driven entirely by the address map. */
@@ -141,6 +142,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
     static constexpr int kBaseW = 1120, kBaseH = 824;
 
@@ -178,6 +180,7 @@ private:
 
     juce::ComboBox midiOutBox, midiInBox, deviceIdBox, partBox;
     juce::TextButton toneButtons[4];
+    juce::TextButton searchButton { "Search..." };
     juce::TextButton detectButton { "Detect" },
                      getButton    { "Get from MC-909" },
                      sendButton   { "Send to MC-909" };
@@ -199,6 +202,17 @@ private:
     bool helpAt (juce::Point<int> inOverlay, juce::String& title, juce::String& range, juce::String& body);
     void teachModeChanged();
     void helpModeChanged();
+
+    // Browser over every waveform / patch / kit / pattern in the MC-909 patch list.
+    std::unique_ptr<SearchOverlay> searchOverlay;
+    void openSearch();
+    bool rhythmTabActive() const;
+    juce::String searchActionText (const mc909search::Entry&) const;
+    juce::String performSearchAction (const mc909search::Entry&, bool audition);
+    void auditionSoon (int note, int delayMs);
+    void flashStatus (const juce::String&);
+    juce::String statusFlash;
+    juce::uint32 statusFlashUntil = 0;
 
     juce::MidiKeyboardState keyboardState;
     juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };

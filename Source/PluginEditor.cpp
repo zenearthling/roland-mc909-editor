@@ -122,6 +122,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     content.addAndMakeVisible (partBox);
     content.addAndMakeVisible (automateLabel);
     content.addAndMakeVisible (detectButton);
+    content.addAndMakeVisible (searchButton);
     content.addAndMakeVisible (getButton);
     content.addAndMakeVisible (sendButton);
     content.addAndMakeVisible (patchNameLabel);
@@ -145,6 +146,18 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     helpOverlay = std::make_unique<HelpOverlay> ([this] (juce::Point<int> p, juce::String& t, juce::String& r, juce::String& b) { return helpAt (p, t, r, b); });
     content.addChildComponent (*helpOverlay);
     macroBar->onHelp = [this] { helpModeChanged(); };
+
+    // Added last so it sits above everything else, including the teach / help layers.
+    SearchOverlay::Host searchHost;
+    searchHost.describeAction = [this] (const mc909search::Entry& e) { return searchActionText (e); };
+    searchHost.perform        = [this] (const mc909search::Entry& e, bool audition) { return performSearchAction (e, audition); };
+    searchHost.closed         = [this] { grabKeyboardFocus(); };
+    searchOverlay = std::make_unique<SearchOverlay> (std::move (searchHost));
+    content.addChildComponent (*searchOverlay);
+
+    searchButton.setTooltip ("Search every waveform, patch, rhythm kit and pattern in the MC-909  (Ctrl/Cmd+F)");
+    searchButton.onClick = [this] { openSearch(); };
+    setWantsKeyboardFocus (true);
 
     automateLabel.setFont (ui::font (10.5f, true).withExtraKerningFactor (0.12f));
     automateLabel.setColour (juce::Label::textColourId, ui::col::textDim);
@@ -330,6 +343,140 @@ MC909EditorComponent::~MC909EditorComponent()
     setLookAndFeel (nullptr);
 }
 
+//==============================================================================
+// Search
+//==============================================================================
+bool MC909EditorComponent::keyPressed (const juce::KeyPress& k)
+{
+    // Ctrl+F on Windows / Linux, Cmd+F on macOS.
+    if (k == juce::KeyPress ('f', juce::ModifierKeys::commandModifier, 0))
+    {
+        openSearch();
+        return true;
+    }
+    return false;
+}
+
+void MC909EditorComponent::openSearch()
+{
+    searchOverlay->open();
+}
+
+bool MC909EditorComponent::rhythmTabActive() const
+{
+    return tabs.getCurrentTabName() == "Rhythm";
+}
+
+void MC909EditorComponent::flashStatus (const juce::String& text)
+{
+    statusFlash = text;
+    statusFlashUntil = juce::Time::getMillisecondCounter() + 5000;
+    statusLabel.setText (text, juce::dontSendNotification);
+}
+
+void MC909EditorComponent::auditionSoon (int note, int delayMs)
+{
+    juce::Component::SafePointer<MC909EditorComponent> safe (this);
+    juce::Timer::callAfterDelay (delayMs, [safe, note]
+    {
+        if (safe == nullptr)
+            return;
+
+        safe->proc.playTestNote (note, 100, true);
+        juce::Timer::callAfterDelay (450, [safe, note]
+        {
+            if (safe != nullptr)
+                safe->proc.playTestNote (note, 0, false);
+        });
+    });
+}
+
+juce::String MC909EditorComponent::searchActionText (const mc909search::Entry& e) const
+{
+    using mc909search::Kind;
+    const int part = proc.getSelectedPart() + 1;
+
+    switch (e.kind)
+    {
+        case Kind::waveform:
+        {
+            const auto tone = "tone " + juce::String (proc.getSelectedTone() + 1);
+            if (rhythmTabActive())
+                return "Load waveform " + juce::String (e.number) + " into pad "
+                       + juce::MidiMessage::getMidiNoteName (59 + proc.getSelectedPad(), true, true, 4) + ", " + tone;
+            return "Load waveform " + juce::String (e.number) + " into Part " + juce::String (part) + ", " + tone;
+        }
+        case Kind::patch:
+            return "Select " + juce::String (e.where) + " on Part " + juce::String (part);
+        case Kind::rhythmKit:
+            return "Select " + juce::String (e.where) + " on Part " + juce::String (part);
+        case Kind::pattern:
+        case Kind::patternSet:
+        case Kind::rpsPattern:
+        case Kind::rpsSet:
+            break;      // the editor has no way to load these, so they are reference only
+    }
+
+    return "Copy the name to the clipboard";
+}
+
+juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry& e, bool audition)
+{
+    using mc909search::Kind;
+    const int part = proc.getSelectedPart();
+    juce::String done;
+
+    switch (e.kind)
+    {
+        case Kind::waveform:
+        {
+            // Internal waveform on the left channel; right off, which the unit plays on both sides.
+            const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
+            proc.setParameterValue (ui::findParam (root + "wave_group"), 0);
+            proc.setParameterValue (ui::findParam (root + "wave_l"), e.number);
+            proc.setParameterValue (ui::findParam (root + "wave_r"), 0);
+
+            done = "Loaded " + juce::String (juce::CharPointer_UTF8 (e.name)) + " (waveform " + juce::String (e.number) + ")";
+            if (audition)
+                auditionSoon (rhythmTabActive() ? 59 + proc.getSelectedPad() : 60, 120);
+            break;
+        }
+
+        case Kind::patch:
+        case Kind::rhythmKit:
+        {
+            // Preset patches: MSB 81, LSB 64-70 (banks A-G). Preset rhythm sets: MSB 82, LSB 64.
+            const bool kit = (e.kind == Kind::rhythmKit);
+            proc.selectBankProgram (part, kit ? 82 : 81, kit ? 64 : 64 + e.bank, e.number - 1);
+
+            // The edit buffer just changed under us; read it back once the unit has switched.
+            juce::Component::SafePointer<MC909EditorComponent> safe (this);
+            juce::Timer::callAfterDelay (350, [safe]
+            {
+                if (safe != nullptr)
+                    safe->proc.requestAll();
+            });
+
+            done = "Selected " + juce::String (juce::CharPointer_UTF8 (e.name)) + " on Part " + juce::String (part + 1);
+            if (audition)
+                auditionSoon (60, 600);
+            break;
+        }
+
+        case Kind::pattern:
+        case Kind::patternSet:
+        case Kind::rpsPattern:
+        case Kind::rpsSet:
+            juce::SystemClipboard::copyTextToClipboard (juce::String (juce::CharPointer_UTF8 (e.name)));
+            done = "Copied \"" + juce::String (juce::CharPointer_UTF8 (e.name)) + "\"";
+            break;
+    }
+
+    flashStatus (done);
+    return done;
+}
+
+//==============================================================================
 void MC909EditorComponent::handleNoteOn (juce::MidiKeyboardState*, int, int note, float velocity)
 {
     proc.playTestNote (note, juce::jlimit (1, 127, (int) (velocity * 127.0f)), true);
@@ -388,7 +535,9 @@ void MC909EditorComponent::timerCallback()
     const bool portsOk = hub.isConnected() && hub.isInputOpen();
 
     juce::String text;
-    if (pending > 0)
+    if (statusFlash.isNotEmpty() && juce::Time::getMillisecondCounter() < statusFlashUntil)
+        text = statusFlash;
+    else if (pending > 0)
         text = "Sending... " + juce::String (pending);
     else
         text << (deviceSeen ? "909 found  " : "")
@@ -577,6 +726,9 @@ void MC909EditorComponent::resized()
         second.removeFromLeft (2);
     }
 
+    second.removeFromLeft (6);
+    searchButton.setBounds (second.removeFromLeft (92).reduced (2, 3));
+
     auto sendArea = second.removeFromRight (260);
     getButton.setBounds  (sendArea.removeFromLeft (126).reduced (2, 3));
     sendButton.setBounds (sendArea.removeFromLeft (126).reduced (2, 3));
@@ -600,6 +752,7 @@ void MC909EditorComponent::resized()
     tabs.setBounds (r);
     teachOverlay->setBounds (r.withTrimmedTop (32));
     helpOverlay->setBounds (r.withTrimmedTop (32));
+    searchOverlay->setBounds (0, 0, kBaseW, kBaseH);
 }
 
 //==============================================================================
