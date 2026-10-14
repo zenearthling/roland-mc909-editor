@@ -288,9 +288,11 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
 
     for (const auto& t : tabDefs)
     {
-        if (t.block == Block::mastering)
+        if (t.block == Block::mastering || t.block == Block::compEQ)
         {
-            pages.add (new MasterPage (proc));      // graphs and dials instead of a list of sliders
+            // graphs and dials instead of a list of sliders
+            pages.add (t.block == Block::mastering ? static_cast<ui::PageBase*> (new MasterPage (proc))
+                                                   : static_cast<ui::PageBase*> (new CompEqPage (proc)));
             tabs.addTab (t.name, tabColour, pages.getLast(), false);
             continue;
         }

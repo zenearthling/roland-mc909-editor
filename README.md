@@ -198,6 +198,21 @@ curve is the setting's maximum reduction, not a measurement.
 The Release readout is approximate (shown with a "~"): the unit documents 0-100 as
 50-5000 ms but not the curve in between, so a logarithmic one is assumed.
 
+## The Comp/EQ tab
+
+- **Compressor** - an input/output curve. Drag the dot on the curve for Threshold and the
+  open dot at the right-hand end for Ratio. The curve is a *schematic*: Roland publishes the
+  ranges (Threshold 0-127, Ratio 0-19) but not what each step is worth in dB or in ratio, so
+  it shows how the two settings interact and the axes carry no numbers. Attack and Release
+  are shown in the documented ms ranges; the On/Off pill is the unit's Comp switch.
+- **2-band EQ** - frequency response of the low and high shelves, using only documented
+  values (low corner 200/400 Hz, high corner 2/4/8 kHz, +/-15 dB). Drag a dot sideways to pick
+  the corner (it snaps to the unit's choices) and up/down to set the gain.
+- **Output** - Level, Reverb Send and Output (Dry / MFX1 / MFX2).
+
+The compressor and EQ are one processor shared by the whole unit. A part uses it when its
+Output Select (Part tab) is set to COMP.
+
 ## Known limits
 
 - Sample data (`.wav` transfer over SMF/SmartMedia) is not covered by the SysEx
