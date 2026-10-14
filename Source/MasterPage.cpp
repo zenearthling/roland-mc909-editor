@@ -185,6 +185,72 @@ void MasterBandGraph::setLevel (int band, float y)
         proc.setParameterValue (*level[band], raw);
 }
 
+void MasterBandGraph::tick()
+{
+    auto& a = proc.analyser;
+    a.setCrossovers (splitHz (0), splitHz (1));
+    haveSignal = a.hasSignal();
+
+    // instant rise, slow fall, so peaks are readable at 30 fps
+    for (int k = 0; k < AudioAnalyser::kBins; ++k)
+    {
+        const float raw = a.spectrumDb (k);
+        auto& shown = shownSpectrum[(size_t) k];
+        shown = raw > shown ? raw : juce::jmax (raw, shown - 1.2f);
+    }
+    repaint();
+}
+
+void MasterBandGraph::paintSpectrum (juce::Graphics& g, juce::Rectangle<float> p) const
+{
+    const double sr = proc.analyser.sampleRate();
+    constexpr int kN = AudioAnalyser::kFftSize, kBins = AudioAnalyser::kBins;
+
+    juce::Path line;
+    bool started = false;
+    for (float x = p.getX(); x <= p.getRight() + 0.5f; x += 2.0f)
+    {
+        const double hz0 = hzForX (x), hz1 = hzForX (juce::jmin (x + 2.0f, p.getRight()));
+        const double b0 = hz0 * kN / sr, b1 = hz1 * kN / sr;
+
+        float db;
+        if (b1 - b0 < 1.0)                       // low end: fewer than one FFT bin per pixel, so interpolate
+        {
+            const double bc = 0.5 * (b0 + b1);
+            const int i = juce::jlimit (0, kBins - 2, (int) std::floor (bc));
+            const float f = (float) juce::jlimit (0.0, 1.0, bc - (double) i);
+            db = shownSpectrum[(size_t) i] * (1.0f - f) + shownSpectrum[(size_t) (i + 1)] * f;
+        }
+        else                                     // high end: many bins per pixel, show the loudest
+        {
+            const int i0 = juce::jlimit (0, kBins - 1, (int) std::floor (b0));
+            const int i1 = juce::jlimit (0, kBins - 1, (int) std::ceil (b1));
+            db = AudioAnalyser::kFloorDb;
+            for (int i = i0; i <= i1; ++i)
+                db = juce::jmax (db, shownSpectrum[(size_t) i]);
+        }
+
+        // 4.5 dB per octave tilt, as spectrum analysers do, so music looks level instead of sloping away
+        const double tilt = 4.5 * std::log2 (std::sqrt (hz0 * hz1) / 1000.0);
+        const float frac = juce::jlimit (0.0f, 1.0f, (db + (float) tilt + 100.0f) / 100.0f);
+        const float y = p.getBottom() - frac * p.getHeight();
+
+        if (! started) { line.startNewSubPath (x, y); started = true; }
+        else           line.lineTo (x, y);
+    }
+
+    juce::Path fill (line);
+    fill.lineTo (p.getRight(), p.getBottom());
+    fill.lineTo (p.getX(), p.getBottom());
+    fill.closeSubPath();
+
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.16f), 0.0f, p.getY(),
+                                             juce::Colours::white.withAlpha (0.02f), 0.0f, p.getBottom(), false));
+    g.fillPath (fill);
+    g.setColour (juce::Colours::white.withAlpha (0.38f));
+    g.strokePath (line, juce::PathStrokeType (1.2f));
+}
+
 void MasterBandGraph::mouseMove (const juce::MouseEvent& e)
 {
     const int s = splitNear (e.position.x);
@@ -273,6 +339,17 @@ void MasterBandGraph::paint (juce::Graphics& g)
     g.setColour (col::textDim.withAlpha (0.7f));
     g.drawText ("dB", juce::Rectangle<float> (b.getX() + 6.0f, p.getY() - 24.0f, 28.0f, 12.0f).toNearestInt(),
                 juce::Justification::centredRight);
+
+    if (haveSignal)
+        paintSpectrum (g, p);
+    else
+    {
+        g.setColour (col::textDim.withAlpha (0.75f));
+        g.setFont (font (11.0f));
+        g.drawText ("No audio reaching the plugin: route the MC-909's return through this track for a live spectrum and meters",
+                    juce::Rectangle<float> (p.getX(), p.getY() + 6.0f, p.getWidth(), 16.0f).toNearestInt(),
+                    juce::Justification::centred);
+    }
 
     // the blended level curve, filled and stroked one band at a time so each band keeps its colour
     const double s0 = splitHz (0), s1 = splitHz (1);
@@ -366,6 +443,166 @@ void MasterBandGraph::paint (juce::Graphics& g)
         g.drawText ("MASTERING OFF", juce::Rectangle<float> (plot().getX(), plot().getY() + 6.0f, plot().getWidth(), 16.0f).toNearestInt(),
                     juce::Justification::centred);
     }
+}
+
+//==============================================================================
+namespace
+{
+    constexpr float kMeterFloor = -60.0f;
+
+    float linearToDb (float lin) { return lin < 1.0e-6f ? AudioAnalyser::kFloorDb : 20.0f * std::log10 (lin); }
+    float meterFrac (float db) { return juce::jlimit (0.0f, 1.0f, (db - kMeterFloor) / -kMeterFloor); }
+    const juce::Colour kClip { 0xffff5a5a };
+
+    /** Peak hold: jumps up at once, holds about a second, then falls. */
+    void updateHold (float& hold, int& ticks, float db)
+    {
+        if (db >= hold)           { hold = db; ticks = 30; }
+        else if (ticks > 0)       { --ticks; }
+        else                      { hold = juce::jmax (AudioAnalyser::kFloorDb, hold - 0.8f); }
+    }
+
+    void drawScale (juce::Graphics& g, juce::Rectangle<float> bar, bool labels, juce::Rectangle<float> labelArea)
+    {
+        g.setFont (font (9.0f));
+        for (const int db : { 0, -12, -24, -36, -48 })
+        {
+            const float y = bar.getBottom() - meterFrac ((float) db) * bar.getHeight();
+            g.setColour (juce::Colours::white.withAlpha (0.13f));
+            g.fillRect (bar.getX(), y, bar.getWidth(), 1.0f);
+            if (labels)
+            {
+                g.setColour (col::textDim.withAlpha (0.85f));
+                g.drawText (juce::String (db), juce::Rectangle<float> (labelArea.getX(), y - 6.0f, labelArea.getWidth(), 12.0f).toNearestInt(),
+                            juce::Justification::centredLeft);
+            }
+        }
+    }
+}
+
+MasterBandMeter::MasterBandMeter (MC909EditorProcessor& p, int b) : proc (p), band (b)
+{
+    setInterceptsMouseClicks (false, false);
+}
+
+void MasterBandMeter::tick()
+{
+    rmsDb = proc.analyser.bandRmsDb (band);
+    updateHold (peakDb, holdTicks, linearToDb (proc.analyser.takeBandPeak (band)));
+    repaint();
+}
+
+void MasterBandMeter::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+    const auto c = mastering::kBandColour[band];
+
+    g.setColour (col::well);
+    g.fillRoundedRectangle (b, 5.0f);
+
+    const auto bar = b.reduced (4.0f, 6.0f);
+    drawScale (g, bar, false, {});
+
+    const float top = bar.getBottom() - meterFrac (rmsDb) * bar.getHeight();
+    if (bar.getBottom() - top > 0.5f)
+    {
+        g.setGradientFill (juce::ColourGradient (c.brighter (0.25f), 0.0f, bar.getY(), c.darker (0.55f), 0.0f, bar.getBottom(), false));
+        g.fillRoundedRectangle (bar.getX(), top, bar.getWidth(), bar.getBottom() - top, 2.0f);
+    }
+
+    if (peakDb > kMeterFloor)
+    {
+        const float y = bar.getBottom() - meterFrac (peakDb) * bar.getHeight();
+        g.setColour (peakDb >= -1.0f ? kClip : juce::Colours::white.withAlpha (0.9f));
+        g.fillRect (bar.getX(), y - 1.0f, bar.getWidth(), 2.0f);
+    }
+}
+
+//------------------------------------------------------------------------------
+MasterOutputPanel::MasterOutputPanel (MC909EditorProcessor& p) : proc (p)
+{
+    setInterceptsMouseClicks (false, false);
+}
+
+void MasterOutputPanel::tick()
+{
+    haveSignal = proc.analyser.hasSignal();
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const float db = linearToDb (proc.analyser.takePeak (ch));
+        peakDb[ch] = db >= peakDb[ch] ? db : juce::jmax (db, peakDb[ch] - 1.6f);
+        updateHold (holdDb[ch], holdTicks[ch], db);
+    }
+    repaint();
+}
+
+void MasterOutputPanel::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+    g.setColour (col::well);
+    g.fillRoundedRectangle (b, 6.0f);
+
+    g.setColour (col::textDim);
+    g.setFont (font (10.0f, true).withExtraKerningFactor (0.14f));
+    g.drawText ("OUTPUT", juce::Rectangle<float> (b.getX() + 10.0f, b.getY() + 6.0f, 80.0f, 14.0f).toNearestInt(),
+                juce::Justification::centredLeft);
+
+    const float barTop = b.getY() + 28.0f, barBottom = b.getBottom() - 30.0f;
+    const juce::Rectangle<float> bars (b.getX() + 10.0f, barTop, 50.0f, barBottom - barTop);
+    drawScale (g, bars, true, juce::Rectangle<float> (bars.getRight() + 4.0f, 0.0f, 24.0f, 0.0f));
+
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const juce::Rectangle<float> bar (bars.getX() + (float) ch * 28.0f, barTop, 22.0f, barBottom - barTop);
+        g.setColour (juce::Colour (0xff181b21));
+        g.fillRoundedRectangle (bar, 2.0f);
+
+        const float top = bar.getBottom() - meterFrac (peakDb[ch]) * bar.getHeight();
+        if (bar.getBottom() - top > 0.5f)
+        {
+            juce::ColourGradient grad (mastering::kBandColour[1], 0.0f, bar.getBottom(), kClip, 0.0f, bar.getY(), false);
+            grad.addColour (0.82, mastering::kBandColour[1].brighter (0.2f));
+            g.setGradientFill (grad);
+            g.fillRoundedRectangle (bar.getX(), top, bar.getWidth(), bar.getBottom() - top, 2.0f);
+        }
+
+        if (holdDb[ch] > kMeterFloor)
+        {
+            const float y = bar.getBottom() - meterFrac (holdDb[ch]) * bar.getHeight();
+            g.setColour (holdDb[ch] >= -0.3f ? kClip : juce::Colours::white.withAlpha (0.9f));
+            g.fillRect (bar.getX(), y - 1.0f, bar.getWidth(), 2.0f);
+        }
+
+        g.setColour (holdDb[ch] >= -0.3f ? kClip : col::textDim);
+        g.setFont (font (9.5f, true));
+        g.drawText (holdDb[ch] > kMeterFloor ? juce::String (holdDb[ch], 1) : juce::String ("-"),
+                    juce::Rectangle<float> (bar.getX() - 3.0f, barBottom + 4.0f, 28.0f, 12.0f).toNearestInt(),
+                    juce::Justification::centred);
+        g.setColour (col::textDim.withAlpha (0.7f));
+        g.setFont (font (9.0f));
+        g.drawText (ch == 0 ? "L" : "R", juce::Rectangle<float> (bar.getX(), barBottom + 15.0f, 22.0f, 11.0f).toNearestInt(),
+                    juce::Justification::centred);
+    }
+
+    auto readout = [&] (const char* label, float lufs, float y)
+    {
+        const auto x = bars.getRight() + 31.0f;
+        g.setColour (col::textDim);
+        g.setFont (font (9.0f, true));
+        g.drawText (label, juce::Rectangle<float> (x, y, b.getRight() - x - 6.0f, 12.0f).toNearestInt(), juce::Justification::centredLeft);
+
+        const bool valid = haveSignal && lufs > -100.0f;
+        g.setColour (valid ? col::text : col::textDim.withAlpha (0.6f));
+        g.setFont (font (19.0f, true));
+        g.drawText (valid ? juce::String (lufs, 1) : juce::String ("-"),
+                    juce::Rectangle<float> (x, y + 13.0f, b.getRight() - x - 6.0f, 24.0f).toNearestInt(), juce::Justification::centredLeft);
+
+        g.setColour (col::textDim.withAlpha (0.8f));
+        g.setFont (font (9.0f));
+        g.drawText ("LUFS", juce::Rectangle<float> (x, y + 37.0f, 40.0f, 11.0f).toNearestInt(), juce::Justification::centredLeft);
+    };
+    readout ("MOMENTARY", proc.analyser.momentaryLufs(), barTop - 2.0f);
+    readout ("SHORT-TERM", proc.analyser.shortTermLufs(), barTop + 70.0f);
 }
 
 //==============================================================================
@@ -539,6 +776,14 @@ MasterPage::MasterPage (MC909EditorProcessor& p) : PageBase (p)
     onOff->setCompact (true);
     graph = add<MasterBandGraph>();
 
+    output = std::make_unique<MasterOutputPanel> (proc);
+    addAndMakeVisible (*output);
+    for (int band = 0; band < 3; ++band)
+    {
+        meters[band] = std::make_unique<MasterBandMeter> (proc, band);
+        addAndMakeVisible (*meters[band]);
+    }
+
     for (int band = 0; band < 3; ++band)
     {
         curves[band] = add<MasterCompCurve> (band);
@@ -574,7 +819,10 @@ void MasterPage::resized()
         auto head = graphCard.reduced (10, 0).removeFromTop (28);
         onOff->setBounds (head.removeFromRight (84).withTrimmedTop (2).withHeight (24));
 
-        graph->setBounds (graphCard.reduced (10, 8).withTrimmedTop (28));
+        auto inner = graphCard.reduced (10, 8).withTrimmedTop (28);
+        output->setBounds (inner.removeFromRight (184));
+        inner.removeFromRight (8);
+        graph->setBounds (inner);
     }
 
     const int w = (r.getWidth() - 2 * gap) / 3;
@@ -584,7 +832,10 @@ void MasterPage::resized()
         r.removeFromLeft (gap);
 
         auto inner = bandCards[band].reduced (10, 8).withTrimmedTop (22);
-        curves[band]->setBounds (inner.removeFromTop (inner.getHeight() - 6 - ParamKnob::cellHeight));
+        auto row = inner.removeFromTop (inner.getHeight() - 6 - ParamKnob::cellHeight);
+        meters[band]->setBounds (row.removeFromRight (24));
+        row.removeFromRight (6);
+        curves[band]->setBounds (row);
         inner.removeFromTop (6);
 
         const int cell = inner.getWidth() / 5;
@@ -599,10 +850,24 @@ void MasterPage::paint (juce::Graphics& g)
 
     g.setColour (col::textDim.withAlpha (0.8f));
     g.setFont (font (10.0f));
-    g.drawText ("Drag a split sideways, or a band up and down.  Drawn from the settings: the MC-909 sends no level meter.",
+    g.drawText ("Drag a split sideways, or a band up and down.  Spectrum and meters show the audio coming back from the MC-909.",
                 graphCard.getX() + 250, graphCard.getY() + 6, graphCard.getWidth() - 250 - 110, 16,
                 juce::Justification::centredLeft);
 
     for (int band = 0; band < 3; ++band)
         drawCard (g, bandCards[band], kBandTitle[band], mastering::kBandColour[band]);
+}
+
+void MasterPage::visibilityChanged()
+{
+    if (isShowing()) startTimerHz (30);
+    else             stopTimer();
+}
+
+void MasterPage::timerCallback()
+{
+    graph->tick();
+    output->tick();
+    for (auto& m : meters)
+        m->tick();
 }

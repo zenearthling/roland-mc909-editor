@@ -1,10 +1,13 @@
 #pragma once
 #include "UiKit.h"
+#include <array>
+#include <memory>
 
 /** MASTER tab: the unit's three-band compressor drawn as a picture instead of a list of sliders.
 
-    Everything here is derived from the parameters. There is no audio and no level metering (the
-    MC-909 does not send any), so the graphs show what the settings DO, not what is passing through. */
+    The curves and dials come from the parameters. The spectrum and the meters come from the audio
+    that reaches the plugin (AudioAnalyser): the MC-909's return, when it is routed through the track
+    the plugin sits on, so it is what the unit sends AFTER its own compressor. */
 
 namespace mastering
 {
@@ -31,6 +34,9 @@ public:
 
     void paint (juce::Graphics&) override;
     void refresh() override { repaint(); }
+
+    /** Called ~30 times a second while the tab is showing: pulls the spectrum and repaints. */
+    void tick();
 
     void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
@@ -60,8 +66,44 @@ private:
     const mc909::ParamDef* ratio[3];
     const mc909::ParamDef* attack[3];
 
+    void paintSpectrum (juce::Graphics&, juce::Rectangle<float> plotArea) const;
+
     int hoverSplit = -1, hoverBand = -1;
     int dragSplit = -1, dragBand = -1;
+
+    std::array<float, AudioAnalyser::kBins> shownSpectrum {};
+    bool haveSignal = false;
+};
+
+/** Level of one band of the audio coming back from the unit: RMS bar plus a peak-hold tick. */
+class MasterBandMeter : public juce::Component
+{
+public:
+    MasterBandMeter (MC909EditorProcessor&, int band);
+    void tick();
+    void paint (juce::Graphics&) override;
+
+private:
+    MC909EditorProcessor& proc;
+    const int band;
+    float rmsDb = AudioAnalyser::kFloorDb, peakDb = AudioAnalyser::kFloorDb;
+    int holdTicks = 0;
+};
+
+/** Left/right peak meters with hold, plus momentary and short-term loudness (LUFS). */
+class MasterOutputPanel : public juce::Component
+{
+public:
+    explicit MasterOutputPanel (MC909EditorProcessor&);
+    void tick();
+    void paint (juce::Graphics&) override;
+
+private:
+    MC909EditorProcessor& proc;
+    float peakDb[2] { AudioAnalyser::kFloorDb, AudioAnalyser::kFloorDb };
+    float holdDb[2] { AudioAnalyser::kFloorDb, AudioAnalyser::kFloorDb };
+    int holdTicks[2] {};
+    bool haveSignal = false;
 };
 
 /** One band's compressor as an input/output curve, with the gain taken off shaded in.
@@ -96,15 +138,20 @@ private:
     Drag drag = none;
 };
 
-class MasterPage : public ui::PageBase
+class MasterPage : public ui::PageBase, private juce::Timer
 {
 public:
     explicit MasterPage (MC909EditorProcessor&);
     void resized() override;
     void paint (juce::Graphics&) override;
+    void visibilityChanged() override;
 
 private:
+    void timerCallback() override;
+
     MasterBandGraph* graph = nullptr;
+    std::unique_ptr<MasterOutputPanel> output;
+    std::unique_ptr<MasterBandMeter> meters[3];
     ui::ParamToggle* onOff = nullptr;
     MasterCompCurve* curves[3] {};
     ui::ParamKnob*   knobs[3][5] {};

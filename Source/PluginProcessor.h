@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MC909Map.h"
 #include "MidiHub.h"
+#include "AudioAnalyser.h"
 
 #include <map>
 
@@ -15,10 +16,13 @@ public:
     ~MC909EditorProcessor() override;
 
     //==============================================================================
-    void prepareToPlay (double, int) override {}
+    void prepareToPlay (double sampleRate, int) override { analyser.prepare (sampleRate); }
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout&) const override { return true; }
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+    /** Read-only look at the audio passing through (the MC-909's return, when it is routed here). */
+    AudioAnalyser analyser;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -47,6 +51,14 @@ public:
 
     /** Current raw value from the local mirror of the device state. */
     int getParameterValue (const mc909::ParamDef& p) const;
+
+    /** Part Info settings (level, pan, sends, output, receive) of ANY of the 16 parts, without
+        changing which part is selected. Used by the Part mixer. */
+    int  getPartValue (int part, const mc909::ParamDef& p) const;
+    void setPartValue (int part, const mc909::ParamDef& p, int rawValue, bool sendToDevice = true);
+    bool havePartInfo (int part) const { return juce::isPositiveAndBelow (part, 16) && partInfoSeen[part]; }
+    bool haveAllPartInfo() const;
+    void requestPartInfo (int gapMs = 60);   ///< asks the unit for all 16 parts' Part Info blocks
 
     /** Patch name lives at Patch Common 0x00..0x0B as 12 ASCII bytes. */
     juce::String getPatchName() const;
@@ -144,6 +156,7 @@ private:
 
     std::map<juce::String, std::vector<uint8_t>> blocks;
 
+    bool    partInfoSeen[16] {};
     int     selectedPart = 0;
     int     selectedTone = 0;
     int     selectedPad  = 1;     // pad 2 = key C4
