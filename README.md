@@ -151,6 +151,15 @@ What Enter does is shown in the footer for the selected item:
 
 With **Audition** ticked, a test note is played after loading.
 
+The line above the on-screen keyboard shows what the search last loaded on the
+selected part ("Now loaded: Preset A 001 Trance Chord"). It appears immediately;
+the **Patch** box at the top right shows the name the unit itself reports once the
+read-back has arrived.
+
+The on-screen keyboard fills the width of the editor, and the 16 keys the pads
+play (Rhythm Tone Key #59-#74, B2 to D4 in the keyboard's labelling) carry the
+pad numbers 1-16.
+
 The data is a generated table (`Source/SearchData.cpp`) built from
 `Roland_MC-909_Patch_List.pdf`. To regenerate it (needs `pdftotext`):
 
