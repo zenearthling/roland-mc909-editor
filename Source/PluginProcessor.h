@@ -96,6 +96,11 @@ public:
     /** Audition a note on the device without leaving the editor. */
     void playTestNote (int noteNumber, int velocity, bool on);
 
+    /** Bank Select (CC#0 = msb, CC#32 = lsb) then Program Change (0-based) on a part's MIDI channel.
+        This is how a preset patch (MSB 81) or rhythm set (MSB 82) is chosen; the unit's edit
+        buffer changes, so the caller should read it back afterwards (requestAll). */
+    void selectBankProgram (int part, int msb, int lsb, int program);
+
     /** Probe every MIDI input for an MC-909 identity reply. */
     void detectDevice();
 

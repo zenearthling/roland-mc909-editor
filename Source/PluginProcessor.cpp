@@ -505,6 +505,14 @@ void MC909EditorProcessor::playTestNote (int noteNumber, int velocity, bool on)
                  : juce::MidiMessage::noteOff (channel, noteNumber));
 }
 
+void MC909EditorProcessor::selectBankProgram (int part, int msb, int lsb, int program)
+{
+    const int channel = juce::jlimit (1, 16, part + 1);
+    hub.sendAll ({ juce::MidiMessage::controllerEvent (channel, 0,  juce::jlimit (0, 127, msb)),
+                   juce::MidiMessage::controllerEvent (channel, 32, juce::jlimit (0, 127, lsb)),
+                   juce::MidiMessage::programChange   (channel,     juce::jlimit (0, 127, program)) });
+}
+
 void MC909EditorProcessor::detectDevice()
 {
     hub.send (roland::makeIdentityRequest());
