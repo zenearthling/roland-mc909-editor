@@ -313,6 +313,12 @@ ParamKnob::ParamKnob (MC909EditorProcessor& p, const juce::String& id, const juc
     refresh();
 }
 
+void ParamKnob::setValueFormatter (std::function<juce::String (int)> f)
+{
+    slider.textFromValueFunction = [f] (double v) { return f ((int) std::lround (v)); };
+    slider.updateText();
+}
+
 void ParamKnob::resized()
 {
     auto r = getLocalBounds();
@@ -397,9 +403,12 @@ void ParamToggle::paint (juce::Graphics& g)
     auto r = getLocalBounds().toFloat();
     const auto accent = findColour (accentColourId, true);
 
-    g.setColour (col::textDim);
-    g.setFont (font (11.0f));
-    g.drawText (caption, r.removeFromTop (14.0f).toNearestInt(), juce::Justification::centredLeft);
+    if (! compact)
+    {
+        g.setColour (col::textDim);
+        g.setFont (font (11.0f));
+        g.drawText (caption, r.removeFromTop (14.0f).toNearestInt(), juce::Justification::centredLeft);
+    }
 
     auto pill = r.removeFromTop (24.0f).reduced (0.5f);
     g.setColour (on ? accent : col::well);

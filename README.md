@@ -170,6 +170,24 @@ python3 tools/gen_search_data.py
 The script checks the parsed counts against the printed lists and refuses to
 write anything if they don't match.
 
+## The Master tab
+
+The MC-909's mastering effect is a three-band compressor. The Master tab draws it:
+
+- **Band graph** - the three bands across the frequency range, each at its output Level.
+  Drag a crossover line sideways to move the split (it snaps to the unit's own steps,
+  200-800 Hz and 2-8 kHz); drag inside a band up or down to set that band's Level.
+- **Compression curve** per band - input against output, with the gain taken off shaded in.
+  Drag the dot on the curve to set the Threshold, and the open dot at the right-hand end
+  to set the Ratio.
+- **Dials** for Attack, Release, Threshold, Ratio and Level, written in real units
+  (ms, dB, 1:2.5).
+
+Everything is drawn from the settings. The MC-909 does not send audio or level
+information, so there are no live meters. The Release readout is approximate (shown
+with a "~"): the unit documents 0-100 as 50-5000 ms but not the curve in between, so a
+logarithmic one is assumed.
+
 ## Known limits
 
 - Sample data (`.wav` transfer over SMF/SmartMedia) is not covered by the SysEx
