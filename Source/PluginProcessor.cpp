@@ -126,12 +126,14 @@ MC909EditorProcessor::~MC909EditorProcessor()
 }
 
 //==============================================================================
-void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer& midiMessages)
+void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     // Audio passes through untouched; this plugin is a control surface, not a
     // processor. Incoming MIDI is forwarded so the plugin can sit inline on a
-    // track without breaking the chain.
+    // track without breaking the chain. The audio is only looked at, for the
+    // meters and spectrum on the Master tab.
     juce::ignoreUnused (midiMessages);
+    analyser.process (buffer);
 }
 
 juce::AudioProcessorEditor* MC909EditorProcessor::createEditor()

@@ -182,11 +182,21 @@ The MC-909's mastering effect is a three-band compressor. The Master tab draws i
   to set the Ratio.
 - **Dials** for Attack, Release, Threshold, Ratio and Level, written in real units
   (ms, dB, 1:2.5).
+- **Live spectrum and meters** - a spectrum behind the band graph, a level meter beside
+  each band's curve (RMS bar with a peak-hold tick), and an Output panel with left/right
+  peaks and momentary / short-term loudness in LUFS (ITU-R BS.1770 K-weighting). The
+  bands are split at the same crossover frequencies as the unit's.
 
-Everything is drawn from the settings. The MC-909 does not send audio or level
-information, so there are no live meters. The Release readout is approximate (shown
-with a "~"): the unit documents 0-100 as 50-5000 ms but not the curve in between, so a
-logarithmic one is assumed.
+The curves and dials are drawn from the settings. The spectrum and meters read the audio
+that reaches the plugin, so they only move when the MC-909's audio return is routed through
+the track the editor sits on (in Standalone, when an audio input is set up for it). The
+plugin only looks at that audio; it passes it through unchanged. Because the return comes
+from the unit's output, it is the sound AFTER the unit's own compressor: the signal before it
+is not available, so gain reduction cannot be metered. The "GR at 0 dB in" figure on each
+curve is the setting's maximum reduction, not a measurement.
+
+The Release readout is approximate (shown with a "~"): the unit documents 0-100 as
+50-5000 ms but not the curve in between, so a logarithmic one is assumed.
 
 ## Known limits
 

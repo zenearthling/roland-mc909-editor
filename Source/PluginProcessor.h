@@ -2,6 +2,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MC909Map.h"
 #include "MidiHub.h"
+#include "AudioAnalyser.h"
 
 #include <map>
 
@@ -15,10 +16,13 @@ public:
     ~MC909EditorProcessor() override;
 
     //==============================================================================
-    void prepareToPlay (double, int) override {}
+    void prepareToPlay (double sampleRate, int) override { analyser.prepare (sampleRate); }
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout&) const override { return true; }
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+
+    /** Read-only look at the audio passing through (the MC-909's return, when it is routed here). */
+    AudioAnalyser analyser;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
