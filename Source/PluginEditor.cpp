@@ -288,11 +288,21 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
 
     for (const auto& t : tabDefs)
     {
-        if (t.block == Block::mastering || t.block == Block::compEQ)
+        if (t.block == Block::mastering || t.block == Block::compEQ || t.block == Block::partInfoPart)
         {
-            // graphs and dials instead of a list of sliders
-            pages.add (t.block == Block::mastering ? static_cast<ui::PageBase*> (new MasterPage (proc))
-                                                   : static_cast<ui::PageBase*> (new CompEqPage (proc)));
+            // graphs, dials and a mixer instead of a list of sliders
+            if (t.block == Block::partInfoPart)
+            {
+                auto* mixer = new PartMixerPage (proc);
+                mixer->getBoard().onPartPicked = [this] (int part)
+                {
+                    partBox.setSelectedId (part + 1, juce::sendNotificationSync);   // same as picking it in the box
+                };
+                pages.add (mixer);
+            }
+            else
+                pages.add (t.block == Block::mastering ? static_cast<ui::PageBase*> (new MasterPage (proc))
+                                                       : static_cast<ui::PageBase*> (new CompEqPage (proc)));
             tabs.addTab (t.name, tabColour, pages.getLast(), false);
             continue;
         }

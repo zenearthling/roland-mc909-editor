@@ -52,6 +52,14 @@ public:
     /** Current raw value from the local mirror of the device state. */
     int getParameterValue (const mc909::ParamDef& p) const;
 
+    /** Part Info settings (level, pan, sends, output, receive) of ANY of the 16 parts, without
+        changing which part is selected. Used by the Part mixer. */
+    int  getPartValue (int part, const mc909::ParamDef& p) const;
+    void setPartValue (int part, const mc909::ParamDef& p, int rawValue, bool sendToDevice = true);
+    bool havePartInfo (int part) const { return juce::isPositiveAndBelow (part, 16) && partInfoSeen[part]; }
+    bool haveAllPartInfo() const;
+    void requestPartInfo (int gapMs = 60);   ///< asks the unit for all 16 parts' Part Info blocks
+
     /** Patch name lives at Patch Common 0x00..0x0B as 12 ASCII bytes. */
     juce::String getPatchName() const;
     void setPatchName (const juce::String& newName);
@@ -148,6 +156,7 @@ private:
 
     std::map<juce::String, std::vector<uint8_t>> blocks;
 
+    bool    partInfoSeen[16] {};
     int     selectedPart = 0;
     int     selectedTone = 0;
     int     selectedPad  = 1;     // pad 2 = key C4

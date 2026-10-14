@@ -213,6 +213,23 @@ The Release readout is approximate (shown with a "~"): the unit documents 0-100 
 The compressor and EQ are one processor shared by the whole unit. A part uses it when its
 Output Select (Part tab) is set to COMP.
 
+## The Part tab (mixer)
+
+All 16 parts side by side, like a mixer. Each strip has the part's patch name, a Receive
+switch (RX), Output Select (DRY / MFX1 / MFX2 / COMP / DIR1 / DIR2 / RHYTHM, click for the
+list), Pan, a Level fader and Dry and Reverb send bars. Drag them; double-click Pan or Level to
+reset; mouse wheel nudges (hold Shift for single steps). Click a strip to select that part
+(same as the Part box at the top). Below the mixer, the selected part's Coarse/Fine Tune,
+Auto Sync, Bank MSB/LSB and Program.
+
+- These are the unit's Part Info settings (addresses 10 00 20 00 for part 1 up to 10 00 2F 00
+  for part 16), so edits go out as normal parameter changes and are read back from the unit.
+  The first time the tab is shown it asks for all 16 parts; "Read all parts" asks again.
+- Patch names: the selected part shows its real patch name; the others are looked up from the
+  bank and program the unit reports (preset patches and preset rhythm sets). Anything else
+  (user patches, other banks) shows as "Bank 85/0  PC 13".
+- No level meters per part: the MC-909 does not report per-part audio over MIDI.
+
 ## Known limits
 
 - Sample data (`.wav` transfer over SMF/SmartMedia) is not covered by the SysEx

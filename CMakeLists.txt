@@ -47,6 +47,7 @@ target_sources(MC909Editor PRIVATE
     Source/Help.cpp
     Source/MasterPage.cpp
     Source/CompEqPage.cpp
+    Source/PartMixerPage.cpp
     Source/AudioAnalyser.cpp
     Source/FxData.cpp
     Source/SearchIndex.cpp
