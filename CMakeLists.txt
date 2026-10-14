@@ -45,6 +45,7 @@ target_sources(MC909Editor PRIVATE
     Source/Pages.cpp
     Source/PluginEditor.cpp
     Source/Help.cpp
+    Source/MasterPage.cpp
     Source/FxData.cpp
     Source/SearchIndex.cpp
     Source/SearchData.cpp
