@@ -182,11 +182,53 @@ The MC-909's mastering effect is a three-band compressor. The Master tab draws i
   to set the Ratio.
 - **Dials** for Attack, Release, Threshold, Ratio and Level, written in real units
   (ms, dB, 1:2.5).
+- **Live spectrum and meters** - a spectrum behind the band graph, a level meter beside
+  each band's curve (RMS bar with a peak-hold tick), and an Output panel with left/right
+  peaks and momentary / short-term loudness in LUFS (ITU-R BS.1770 K-weighting). The
+  bands are split at the same crossover frequencies as the unit's.
 
-Everything is drawn from the settings. The MC-909 does not send audio or level
-information, so there are no live meters. The Release readout is approximate (shown
-with a "~"): the unit documents 0-100 as 50-5000 ms but not the curve in between, so a
-logarithmic one is assumed.
+The curves and dials are drawn from the settings. The spectrum and meters read the audio
+that reaches the plugin, so they only move when the MC-909's audio return is routed through
+the track the editor sits on (in Standalone, when an audio input is set up for it). The
+plugin only looks at that audio; it passes it through unchanged. Because the return comes
+from the unit's output, it is the sound AFTER the unit's own compressor: the signal before it
+is not available, so gain reduction cannot be metered. The "GR at 0 dB in" figure on each
+curve is the setting's maximum reduction, not a measurement.
+
+The Release readout is approximate (shown with a "~"): the unit documents 0-100 as
+50-5000 ms but not the curve in between, so a logarithmic one is assumed.
+
+## The Comp/EQ tab
+
+- **Compressor** - an input/output curve. Drag the dot on the curve for Threshold and the
+  open dot at the right-hand end for Ratio. The curve is a *schematic*: Roland publishes the
+  ranges (Threshold 0-127, Ratio 0-19) but not what each step is worth in dB or in ratio, so
+  it shows how the two settings interact and the axes carry no numbers. Attack and Release
+  are shown in the documented ms ranges; the On/Off pill is the unit's Comp switch.
+- **2-band EQ** - frequency response of the low and high shelves, using only documented
+  values (low corner 200/400 Hz, high corner 2/4/8 kHz, +/-15 dB). Drag a dot sideways to pick
+  the corner (it snaps to the unit's choices) and up/down to set the gain.
+- **Output** - Level, Reverb Send and Output (Dry / MFX1 / MFX2).
+
+The compressor and EQ are one processor shared by the whole unit. A part uses it when its
+Output Select (Part tab) is set to COMP.
+
+## The Part tab (mixer)
+
+All 16 parts side by side, like a mixer. Each strip has the part's patch name, a Receive
+switch (RX), Output Select (DRY / MFX1 / MFX2 / COMP / DIR1 / DIR2 / RHYTHM, click for the
+list), Pan, a Level fader and Dry and Reverb send bars. Drag them; double-click Pan or Level to
+reset; mouse wheel nudges (hold Shift for single steps). Click a strip to select that part
+(same as the Part box at the top). Below the mixer, the selected part's Coarse/Fine Tune,
+Auto Sync, Bank MSB/LSB and Program.
+
+- These are the unit's Part Info settings (addresses 10 00 20 00 for part 1 up to 10 00 2F 00
+  for part 16), so edits go out as normal parameter changes and are read back from the unit.
+  The first time the tab is shown it asks for all 16 parts; "Read all parts" asks again.
+- Patch names: the selected part shows its real patch name; the others are looked up from the
+  bank and program the unit reports (preset patches and preset rhythm sets). Anything else
+  (user patches, other banks) shows as "Bank 85/0  PC 13".
+- No level meters per part: the MC-909 does not report per-part audio over MIDI.
 
 ## Known limits
 
