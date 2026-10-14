@@ -131,6 +131,53 @@ private:
 };
 
 //==============================================================================
+/** On-screen keyboard that numbers the 16 keys the MC-909's pads play (Rhythm Tone Key #59..#74),
+    so "pad 5" on the unit and the key you click here are obviously the same thing. */
+class PadKeyboard : public juce::MidiKeyboardComponent
+{
+public:
+    static constexpr int kFirstPadNote = 59, kNumPads = 16;
+
+    PadKeyboard (juce::MidiKeyboardState& state, Orientation o) : juce::MidiKeyboardComponent (state, o) {}
+
+    static bool isPadNote (int note) { return note >= kFirstPadNote && note < kFirstPadNote + kNumPads; }
+
+protected:
+    void drawWhiteNote (int note, juce::Graphics& g, juce::Rectangle<float> area, bool isDown, bool isOver,
+                        juce::Colour line, juce::Colour text) override
+    {
+        // A "C4" label and a pad number in the same spot would just fight, so the number wins.
+        juce::MidiKeyboardComponent::drawWhiteNote (note, g, area, isDown, isOver, line,
+                                                    isPadNote (note) ? juce::Colours::transparentBlack : text);
+        if (isPadNote (note))
+            badge (g, area, note, 5.0f);
+    }
+
+    void drawBlackNote (int note, juce::Graphics& g, juce::Rectangle<float> area, bool isDown, bool isOver,
+                        juce::Colour fill) override
+    {
+        juce::MidiKeyboardComponent::drawBlackNote (note, g, area, isDown, isOver, fill);
+        if (isPadNote (note))
+            badge (g, area, note, 4.0f);
+    }
+
+private:
+    static void badge (juce::Graphics& g, juce::Rectangle<float> keyArea, int note, float bottomGap)
+    {
+        const float d = juce::jmin (17.0f, keyArea.getWidth() - 3.0f);
+        if (d < 8.0f)
+            return;
+
+        const auto r = juce::Rectangle<float> (d, d).withCentre ({ keyArea.getCentreX(), keyArea.getBottom() - bottomGap - d * 0.5f });
+        g.setColour (juce::Colour (0xffff8a3d));
+        g.fillEllipse (r);
+        g.setColour (juce::Colour (0xff17191e));
+        g.setFont (juce::Font (juce::FontOptions (d * 0.66f, juce::Font::bold)));
+        g.drawText (juce::String (note - kFirstPadNote + 1), r.toNearestInt(), juce::Justification::centred, false);
+    }
+};
+
+//==============================================================================
 class MC909EditorComponent : public juce::AudioProcessorEditor,
                              private MC909EditorProcessor::EditListener,
                              private juce::MidiKeyboardState::Listener,
@@ -195,6 +242,12 @@ private:
     juce::OwnedArray<ParamPanel> panels;
 
     juce::Label channelLabel;
+
+    // What the search last put on each part ("Preset A 001  Trance Chord"), shown right away
+    // rather than waiting for the unit to answer a Get. The hardware's own name is in the Patch box.
+    juce::Label loadedLabel;
+    juce::String loadedText[16];
+    void setLoaded (int part, const juce::String& text);
     std::unique_ptr<MacroBar> macroBar;
     std::unique_ptr<TeachOverlay> teachOverlay;
     std::unique_ptr<HelpOverlay> helpOverlay;
@@ -215,7 +268,7 @@ private:
     juce::uint32 statusFlashUntil = 0;
 
     juce::MidiKeyboardState keyboardState;
-    juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
+    PadKeyboard keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
 
     bool needsRefresh = false;
     bool deviceSeen = false;

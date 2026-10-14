@@ -137,6 +137,12 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     channelLabel.setInterceptsMouseClicks (false, false);
     content.addAndMakeVisible (channelLabel);
 
+    loadedLabel.setFont (ui::font (10.5f, true));
+    loadedLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff8a3d));
+    loadedLabel.setJustificationType (juce::Justification::centredLeft);
+    loadedLabel.setInterceptsMouseClicks (false, false);
+    content.addAndMakeVisible (loadedLabel);
+
     macroBar = std::make_unique<MacroBar> (proc, [this] { teachModeChanged(); });
     content.addAndMakeVisible (*macroBar);
     teachOverlay = std::make_unique<TeachOverlay> (
@@ -288,6 +294,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     }
 
     keyboard.setAvailableRange (24, 96);
+    keyboard.setScrollButtonsVisible (false);       // the whole range fits; resized() sets the key width
     keyboard.setKeyWidth (17.0f);
     keyboard.setColour (juce::MidiKeyboardComponent::whiteNoteColourId, juce::Colour (0xffd8dbe1));
     keyboard.setColour (juce::MidiKeyboardComponent::blackNoteColourId, juce::Colour (0xff17191e));
@@ -374,6 +381,13 @@ void MC909EditorComponent::flashStatus (const juce::String& text)
     statusLabel.setText (text, juce::dontSendNotification);
 }
 
+void MC909EditorComponent::setLoaded (int part, const juce::String& text)
+{
+    loadedText[juce::jlimit (0, 15, part)] = text;
+    if (part == proc.getSelectedPart())
+        loadedLabel.setText (text, juce::dontSendNotification);
+}
+
 void MC909EditorComponent::auditionSoon (int note, int delayMs)
 {
     juce::Component::SafePointer<MC909EditorComponent> safe (this);
@@ -437,6 +451,10 @@ juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry
             proc.setParameterValue (ui::findParam (root + "wave_r"), 0);
 
             done = "Loaded " + juce::String (juce::CharPointer_UTF8 (e.name)) + " (waveform " + juce::String (e.number) + ")";
+            setLoaded (part, "Now loaded:  Waveform " + juce::String (e.number).paddedLeft ('0', 3) + "  "
+                                 + juce::String (juce::CharPointer_UTF8 (e.name))
+                                 + (rhythmTabActive() ? "  (pad " + juce::String (proc.getSelectedPad() + 1) + ")"
+                                                      : "  (tone " + juce::String (proc.getSelectedTone() + 1) + ")"));
             if (audition)
                 auditionSoon (rhythmTabActive() ? 59 + proc.getSelectedPad() : 60, 120);
             break;
@@ -458,6 +476,7 @@ juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry
             });
 
             done = "Selected " + juce::String (juce::CharPointer_UTF8 (e.name)) + " on Part " + juce::String (part + 1);
+            setLoaded (part, "Now loaded:  " + juce::String (e.where) + "  " + juce::String (juce::CharPointer_UTF8 (e.name)));
             if (audition)
                 auditionSoon (60, 600);
             break;
@@ -567,6 +586,8 @@ void MC909EditorComponent::refreshAll()
 
     if (! patchNameEditor.hasKeyboardFocus (true))
         patchNameEditor.setText (proc.getPatchName(), juce::dontSendNotification);
+
+    loadedLabel.setText (loadedText[juce::jlimit (0, 15, proc.getSelectedPart())], juce::dontSendNotification);
 
     partBox.setSelectedId (proc.getSelectedPart() + 1, juce::dontSendNotification);
 
@@ -742,10 +763,15 @@ void MC909EditorComponent::resized()
 
     r.removeFromTop (6);
     keyboard.setBounds (r.removeFromBottom (68).reduced (0, 2));
+
+    // C1..C7 is 43 white keys. Stretch them to exactly the width of the editor.
+    keyboard.setKeyWidth ((float) keyboard.getWidth() / 43.0f);
+    keyboard.setLowestVisibleKey (24);
     {
         auto row = r.removeFromBottom (18);
         zoomOutButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
         zoomInButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
+        loadedLabel.setBounds (row.removeFromLeft (560).reduced (8, 0));
         channelLabel.setBounds (row);
     }
     macroBar->setBounds (r.removeFromBottom (42));
