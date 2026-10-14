@@ -5,6 +5,7 @@
 #include "UiKit.h"
 #include "Pages.h"
 #include "SearchOverlay.h"
+#include "MasterPage.h"
 //==============================================================================
 /** One row: name on the left, control on the right. Continuous parameters get a
     slider, enumerated ones a combo box, driven entirely by the address map. */

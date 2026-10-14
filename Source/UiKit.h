@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "PluginProcessor.h"
+#include <functional>
 #include <initializer_list>
 #include <utility>
 
@@ -99,6 +100,9 @@ public:
     void refresh() override;
     const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
+    /** How the readout under the dial is written, e.g. 1:2.5 for a ratio step. Takes the display value. */
+    void setValueFormatter (std::function<juce::String (int)> f);
+
     static constexpr int cellWidth = 60, cellHeight = 86;
 
 private:
@@ -141,10 +145,14 @@ public:
     void refresh() override;
     const mc909::ParamDef* teachDef (juce::Point<int>) const override { return &def; }
 
+    /** Just the pill, no caption line above it, for putting the switch in a card's title row. */
+    void setCompact (bool c) { compact = c; repaint(); }
+
 private:
     const mc909::ParamDef& def;
     juce::String caption;
     bool on = false;
+    bool compact = false;
 };
 
 /** What a number box shows and allows when it stands for a specific parameter of the selected effect. */
