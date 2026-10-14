@@ -122,6 +122,45 @@ auval -v aufx M909 Indp
 The plugin state travels with the DAW session, so a project reopens with the
 patch you were working on even though the hardware has moved on.
 
+## Searching the factory sounds
+
+**Search...** in the header (or **Ctrl/Cmd+F**) opens a browser over everything
+printed in the patch list appendix: 693 waveforms, 800 preset patches (banks
+A-G), the 72 preset rhythm sets, 215 preset patterns, and the pattern / RPS sets.
+It filters as you type: every word has to match, anywhere in the name, location
+or contents, so `909 kick` finds the TR909 kick waveforms *and* the kits that
+contain one, and `132 q'hey` finds patterns by tempo and programmer.
+
+| Key | Does |
+| --- | --- |
+| Up / Down, PageUp / PageDown | move through the results |
+| Enter | load the selected item, close |
+| Shift+Enter | load and keep browsing |
+| Tab / Shift+Tab | next / previous category |
+| Esc | clear the search; Esc again closes |
+
+What Enter does is shown in the footer for the selected item:
+
+- **Waveform** - sets Wave Group to INT, Wave L to the waveform number and Wave R
+  to off, on the selected pad (Rhythm tab) or the selected tone (any other tab).
+- **Patch / rhythm kit** - Bank Select + Program Change on the selected part's MIDI
+  channel (preset patches: CC#0 = 81, CC#32 = 64-70; preset rhythm sets:
+  CC#0 = 82, CC#32 = 64), then reads the unit back. Needs **Rx Bank Select** and
+  **Rx Program Change** ON under SYSTEM -> MIDI, which is the factory default.
+- **Patterns and sets** - reference only; the name is copied to the clipboard.
+
+With **Audition** ticked, a test note is played after loading.
+
+The data is a generated table (`Source/SearchData.cpp`) built from
+`Roland_MC-909_Patch_List.pdf`. To regenerate it (needs `pdftotext`):
+
+```
+python3 tools/gen_search_data.py
+```
+
+The script checks the parsed counts against the printed lists and refuses to
+write anything if they don't match.
+
 ## Known limits
 
 - Sample data (`.wav` transfer over SMF/SmartMedia) is not covered by the SysEx
@@ -142,6 +181,11 @@ Source/
   MidiHub.{h,cpp}       CoreMIDI ports + paced send queue
   PluginProcessor.*     Edit buffer mirror, automation, session state
   PluginEditor.*        UI generated from the parameter table
+  SearchOverlay.*       The Ctrl/Cmd+F browser
+  SearchIndex.*         Search ranking (no JUCE dependency)
+  SearchData.cpp        Generated: every waveform / patch / kit / pattern name
+tools/
+  gen_search_data.py    Regenerates SearchData.cpp from the patch list PDF
 ```
 
 Adding a parameter means adding one line to `MC909Map.cpp`; the UI, the SysEx
