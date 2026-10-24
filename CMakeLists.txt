@@ -19,24 +19,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(JUCE)
 
-juce_add_plugin(MC909Editor
-    COMPANY_NAME              "Independent"
-    PLUGIN_MANUFACTURER_CODE  Indp
-    PLUGIN_CODE               M909
-    FORMATS                   AU VST3 Standalone
-    PRODUCT_NAME              "MC-909 Editor"
-    BUNDLE_ID                 com.example.mc909editor
-
-    # Audio passes straight through; the plugin exists to drive the hardware.
-    IS_SYNTH                  FALSE
-    IS_MIDI_EFFECT            FALSE
-    NEEDS_MIDI_INPUT          TRUE
-    NEEDS_MIDI_OUTPUT         TRUE
-    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD   TRUE
-)
-
-target_sources(MC909Editor PRIVATE
+set(MC909_SOURCES
     Source/RolandSysEx.cpp
     Source/MC909Map.cpp
     Source/MidiHub.cpp
@@ -45,30 +28,54 @@ target_sources(MC909Editor PRIVATE
     Source/Pages.cpp
     Source/PluginEditor.cpp
     Source/Help.cpp
-    Source/MasterPage.cpp
-    Source/CompEqPage.cpp
-    Source/PartMixerPage.cpp
-    Source/AudioAnalyser.cpp
     Source/FxData.cpp
-    Source/SearchIndex.cpp
-    Source/SearchData.cpp
-    Source/SearchOverlay.cpp
 )
 
-target_compile_definitions(MC909Editor PUBLIC
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0
-)
+# Two builds of the same code:
+#   MC909Editor            audio effect. Goes on the audio track that carries the unit's audio.
+#   MC909EditorInstrument  instrument. Goes on a MIDI track; Live can then route other MIDI
+#                          tracks and the MPK to it, so the keyboard lights for those notes
+#                          and (with Thru on) they are passed on to the MC-909.
+function(mc909_add_plugin target product code bundle formats synth)
+    juce_add_plugin(${target}
+        COMPANY_NAME              "Independent"
+        PLUGIN_MANUFACTURER_CODE  Indp
+        PLUGIN_CODE               ${code}
+        FORMATS                   ${formats}
+        PRODUCT_NAME              "${product}"
+        BUNDLE_ID                 ${bundle}
 
-target_link_libraries(MC909Editor PRIVATE
-    juce::juce_audio_utils
-    juce::juce_audio_devices
-    juce::juce_audio_processors
-    juce::juce_dsp
-PUBLIC
-    juce::juce_recommended_config_flags
-    juce::juce_recommended_lto_flags
-    juce::juce_recommended_warning_flags
-)
+        IS_SYNTH                  ${synth}
+        IS_MIDI_EFFECT            FALSE
+        NEEDS_MIDI_INPUT          TRUE
+        NEEDS_MIDI_OUTPUT         TRUE
+        EDITOR_WANTS_KEYBOARD_FOCUS TRUE
+        COPY_PLUGIN_AFTER_BUILD   TRUE
+    )
+
+    target_sources(${target} PRIVATE ${MC909_SOURCES})
+
+    target_compile_definitions(${target} PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+    )
+
+    if(synth)
+        target_compile_definitions(${target} PUBLIC MC909_INSTRUMENT=1)
+    endif()
+
+    target_link_libraries(${target} PRIVATE
+        juce::juce_audio_utils
+        juce::juce_audio_devices
+        juce::juce_audio_processors
+    PUBLIC
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_lto_flags
+        juce::juce_recommended_warning_flags
+    )
+endfunction()
+
+mc909_add_plugin(MC909Editor "MC-909 Editor" M909 com.example.mc909editor "AU;VST3;Standalone" FALSE)
+mc909_add_plugin(MC909EditorInstrument "MC-909 Editor Instrument" M90I com.example.mc909editorinstrument "AU;VST3" TRUE)
