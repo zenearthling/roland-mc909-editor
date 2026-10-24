@@ -28,14 +28,22 @@ set(MC909_SOURCES
     Source/Pages.cpp
     Source/PluginEditor.cpp
     Source/Help.cpp
+    Source/MasterPage.cpp
+    Source/CompEqPage.cpp
+    Source/PartMixerPage.cpp
+    Source/AudioAnalyser.cpp
     Source/FxData.cpp
+    Source/SearchIndex.cpp
+    Source/SearchData.cpp
+    Source/SearchOverlay.cpp
 )
 
 # Two builds of the same code:
-#   MC909Editor            audio effect. Goes on the audio track that carries the unit's audio.
+#   MC909Editor            audio effect. Goes on the audio track that carries the unit's audio
+#                          (the Master tab's meters and spectrum need that audio).
 #   MC909EditorInstrument  instrument. Goes on a MIDI track; Live can then route other MIDI
-#                          tracks and the MPK to it, so the keyboard lights for those notes
-#                          and (with Thru on) they are passed on to the MC-909.
+#                          tracks and the MPK to it, so the keyboard and pads light up for those
+#                          notes and (with Thru on) they are passed on to the MC-909.
 function(mc909_add_plugin target product code bundle formats synth)
     juce_add_plugin(${target}
         COMPANY_NAME              "Independent"
@@ -70,6 +78,7 @@ function(mc909_add_plugin target product code bundle formats synth)
         juce::juce_audio_utils
         juce::juce_audio_devices
         juce::juce_audio_processors
+        juce::juce_dsp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
