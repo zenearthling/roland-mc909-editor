@@ -57,12 +57,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout MC909EditorProcessor::makeLa
 
 MC909EditorProcessor::MC909EditorProcessor()
     : AudioProcessor (BusesProperties()
+#ifndef MC909_INSTRUMENT
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+#endif
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       valueTree (*this, nullptr, "MC909", makeLayout())
 {
     hub.addListener (this);
     hub.setSendInterval (5);
+    hub.onNoteMessage = [this] (const juce::MidiMessage& m)
+    {
+        noteSeen (m.getChannel() - 1, m.getNoteNumber(), m.isNoteOn());
+    };
 
     for (const auto& ap : quick::automatable())
         valueTree.addParameterListener (ap.id, this);
@@ -109,6 +115,10 @@ MC909EditorProcessor::MC909EditorProcessor()
                 sysExReceived (juce::MidiMessage::createSysExMessage (bytes.data() + 1, (int) bytes.size() - 2));
         }
     }
+
+    // Local test aid: hold these notes down on the selected part, to check the lit keys and pads.
+    for (const auto& n : juce::StringArray::fromTokens (juce::SystemStats::getEnvironmentVariable ("MC909_DEMO_NOTES", {}), ",", ""))
+        noteSeen (selectedPart, n.getIntValue(), true);
    #endif
 }
 
@@ -122,18 +132,55 @@ MC909EditorProcessor::~MC909EditorProcessor()
     for (int n = 0; n < numMacros; ++n)
         valueTree.removeParameterListener ("macro." + juce::String (n + 1), this);
 
+    hub.onNoteMessage = nullptr;
     hub.removeListener (this);
 }
 
 //==============================================================================
+void MC909EditorProcessor::noteSeen (int channel0, int note, bool on)
+{
+    if (! juce::isPositiveAndBelow (channel0, 16) || ! juce::isPositiveAndBelow (note, 128))
+        return;
+
+    // bit 0 = held; bits 1 and 2 = struck, cleared by each display once it has drawn them.
+    const uint8_t strikes = (uint8_t) (strikeKeyboard | strikePads);
+    noteStates[channel0][note] = on ? (uint8_t) (1 | strikes)
+                                    : (uint8_t) (noteStates[channel0][note].load() & strikes);
+}
+
+uint8_t MC909EditorProcessor::takeNoteState (int channel0, int note, uint8_t strikeBit)
+{
+    auto& s = noteStates[juce::jlimit (0, 15, channel0)][juce::jlimit (0, 127, note)];
+    const uint8_t v = s.load();
+    if (v & strikeBit)
+        s.fetch_and ((uint8_t) ~strikeBit);
+    return v;
+}
+
 void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    // Audio passes through untouched; this plugin is a control surface, not a
-    // processor. Incoming MIDI is forwarded so the plugin can sit inline on a
-    // track without breaking the chain. The audio is only looked at, for the
-    // meters and spectrum on the Master tab.
-    juce::ignoreUnused (midiMessages);
-    analyser.process (buffer);
+    // Audio is not touched in the effect build; this plugin is a control surface. In the
+    // instrument build there is no audio input, so the output is silence.
+    if (isInstrumentBuild)
+        buffer.clear();
+
+    // MIDI the host routes here (a MIDI track, or the MPK) lights the on-screen keyboard
+    // and, if Thru is on, is passed on to the MC-909 over the plugin's own MIDI Out.
+    const bool thru = midiThru.load();
+
+    for (const auto metadata : midiMessages)
+    {
+        const auto m = metadata.getMessage();
+
+        if (m.isNoteOnOrOff())
+            noteSeen (m.getChannel() - 1, m.getNoteNumber(), m.isNoteOn());
+
+        if (thru && m.getChannel() > 0 && ! m.isSysEx())
+            hub.sendNow (m);
+    }
+
+    if (isInstrumentBuild)
+        midiMessages.clear();
 }
 
 juce::AudioProcessorEditor* MC909EditorProcessor::createEditor()
@@ -226,52 +273,6 @@ void MC909EditorProcessor::setParameterValue (const ParamDef& p, int rawValue, b
     }
 
     editListeners.call ([] (EditListener& l) { l.modelChanged(); });
-}
-
-//==============================================================================
-int MC909EditorProcessor::getPartValue (int part, const ParamDef& p) const
-{
-    jassert (p.block == Block::partInfoPart);
-    const auto it = blocks.find ("partInfo:" + juce::String (juce::jlimit (0, 15, part)));
-    return it == blocks.end() ? p.rawMin : readValue (it->second, p.offset, p.numBytes);
-}
-
-void MC909EditorProcessor::setPartValue (int part, const ParamDef& p, int rawValue, bool sendToDevice)
-{
-    jassert (p.block == Block::partInfoPart);
-    part = juce::jlimit (0, 15, part);
-    rawValue = juce::jlimit (p.rawMin, p.rawMax, rawValue);
-
-    std::vector<uint8_t> bytes;
-    roland::toNibbles (rawValue, p.numBytes, bytes);
-
-    auto& data = blocks["partInfo:" + juce::String (part)];
-    if (data.size() < mc909::blockByteCount (Block::partInfoPart))
-        data.resize (mc909::blockByteCount (Block::partInfoPart), 0);
-
-    for (size_t i = 0; i < bytes.size() && p.offset + i < data.size(); ++i)
-        data[p.offset + i] = bytes[i];
-
-    if (sendToDevice)
-        hub.send (roland::makeDT1 (deviceId, blockAddress (Block::partInfoPart, part, 0, 0) + p.offset,
-                                   bytes.data(), bytes.size()));
-
-    editListeners.call ([] (EditListener& l) { l.modelChanged(); });
-}
-
-bool MC909EditorProcessor::haveAllPartInfo() const
-{
-    for (bool seen : partInfoSeen)
-        if (! seen)
-            return false;
-    return true;
-}
-
-void MC909EditorProcessor::requestPartInfo (int gapMs)
-{
-    for (int part = 0; part < 16; ++part)
-        hub.send (roland::makeRQ1 (deviceId, blockAddress (Block::partInfoPart, part, 0, 0),
-                                   mc909::blockByteCount (Block::partInfoPart)), gapMs);
 }
 
 //==============================================================================
@@ -553,14 +554,6 @@ void MC909EditorProcessor::playTestNote (int noteNumber, int velocity, bool on)
                  : juce::MidiMessage::noteOff (channel, noteNumber));
 }
 
-void MC909EditorProcessor::selectBankProgram (int part, int msb, int lsb, int program)
-{
-    const int channel = juce::jlimit (1, 16, part + 1);
-    hub.sendAll ({ juce::MidiMessage::controllerEvent (channel, 0,  juce::jlimit (0, 127, msb)),
-                   juce::MidiMessage::controllerEvent (channel, 32, juce::jlimit (0, 127, lsb)),
-                   juce::MidiMessage::programChange   (channel,     juce::jlimit (0, 127, program)) });
-}
-
 void MC909EditorProcessor::detectDevice()
 {
     hub.send (roland::makeIdentityRequest());
@@ -633,25 +626,6 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
     const int savedTone = selectedTone, savedPad = selectedPad;
     bool matched = false;
 
-    // Part Info of any of the 16 parts (the Part mixer asks for all of them).
-    for (int part = 0; part < 16 && ! matched; ++part)
-    {
-        const uint32_t base = blockAddress (Block::partInfoPart, part, 0, 0).toLinear();
-        if (incoming >= base && incoming < base + mc909::blockByteCount (Block::partInfoPart))
-        {
-            auto& data = blocks["partInfo:" + juce::String (part)];
-            if (data.size() < mc909::blockByteCount (Block::partInfoPart))
-                data.resize (mc909::blockByteCount (Block::partInfoPart), 0);
-
-            for (size_t i = 0; i < dt.data.size(); ++i)
-                if (incoming - base + i < data.size())
-                    data[incoming - base + i] = dt.data[i];
-
-            partInfoSeen[part] = true;
-            matched = true;
-        }
-    }
-
     for (auto b : candidates)
     {
         const int count = (b == Block::patchTone) ? 4 : (b == Block::rhythmNote) ? (int) mc909::kRhythmPads : 1;
@@ -709,6 +683,7 @@ void MC909EditorProcessor::getStateInformation (juce::MemoryBlock& destData)
     root.setProperty ("deviceId", (int) deviceId, nullptr);
     root.setProperty ("midiOut",  hub.currentOutputId(), nullptr);
     root.setProperty ("midiIn",   hub.currentInputId(),  nullptr);
+    root.setProperty ("midiThru", midiThru.load(), nullptr);
 
     juce::ValueTree blocksTree ("Blocks");
     for (const auto& [key, data] : blocks)
@@ -780,6 +755,8 @@ void MC909EditorProcessor::setStateInformation (const void* data, int sizeInByte
         }
         updateHostDisplay (ChangeDetails().withParameterInfoChanged (true));
     }
+
+    midiThru = (bool) root.getProperty ("midiThru", isInstrumentBuild);
 
     hub.openOutput (root.getProperty ("midiOut", "").toString());
     hub.openInput  (root.getProperty ("midiIn",  "").toString());

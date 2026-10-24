@@ -583,30 +583,9 @@ FxPage::FxPage (MC909EditorProcessor& p) : PageBase (p)
             u.params.push_back (add<ParamNumber> (tag + ".p" + juce::String (n), "P" + juce::String (n)));
     };
 
-    const char* probeNames[3] { "Probe MFX 1", "Probe MFX 2", "Probe Reverb" };
-    for (int i = 0; i < 3; ++i)
-    {
-        probeBtn[i].setButtonText (probeNames[i]);
-        probeBtn[i].setTooltip ("Test tool: writes 1, 2, 3 ... into the effect's raw slots so a photo of the unit's screen shows "
-                                "which slot feeds which row. Changes the unit's edit buffer only; re-select the patch to undo.");
-        probeBtn[i].onClick = [this, i] { probe (i); };
-        addAndMakeVisible (probeBtn[i]);
-    }
-
     build (mfx1, "mfx1", 32, true, true);
     build (mfx2, "mfx2", 32, true, false);
     build (rev,  "rev",  20, false, false);
-}
-
-void FxPage::probe (int unit)
-{
-    const char* tags[3] { "mfx1", "mfx2", "rev" };
-    const int count = unit == 2 ? 20 : 32;
-    for (int n = 1; n <= count; ++n)
-    {
-        const auto& def = ui::findParam (juce::String (tags[unit]) + ".p" + juce::String (n));
-        proc.setParameterValue (def, def.dispSub + n);
-    }
 }
 
 void FxPage::refresh()
@@ -697,12 +676,6 @@ void FxPage::resized()
             t->setBounds (c.removeFromLeft (130).withHeight (36));
             c.removeFromLeft (10);
         }
-        c.removeFromLeft (30);
-        for (auto& b : probeBtn)
-        {
-            b.setBounds (c.removeFromLeft (110).withHeight (30));
-            c.removeFromLeft (6);
-        }
     }
 
     const auto cols = splitColumns (r, { 1.0f, 1.0f, 0.8f }, gap);
@@ -720,6 +693,55 @@ void FxPage::resized()
 }
 
 //==============================================================================
+void PadButton::setPad (int number, const juce::String& waveName)
+{
+    if (number == padNumber && waveName == name)
+        return;
+
+    padNumber = number;
+    name = waveName;
+    repaint();
+}
+
+void PadButton::setLit (bool on)
+{
+    if (on != lit)
+    {
+        lit = on;
+        repaint();
+    }
+}
+
+void PadButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    const auto b = getLocalBounds().toFloat().reduced (0.5f);
+    const bool selected = getToggleState();
+    const auto accent = findColour (juce::TextButton::buttonOnColourId);
+
+    auto fill = selected ? accent : findColour (juce::TextButton::buttonColourId);
+    if (down)             fill = fill.darker (0.15f);
+    else if (highlighted) fill = fill.brighter (0.12f);
+    if (lit)              fill = (selected ? accent : ui::col::knobBody).interpolatedWith (juce::Colours::white, selected ? 0.55f : 0.30f);
+
+    g.setColour (fill);
+    g.fillRoundedRectangle (b, 5.0f);
+    g.setColour (lit ? juce::Colours::white : (selected ? fill.brighter (0.25f) : ui::col::cardEdge));
+    g.drawRoundedRectangle (b, 5.0f, lit ? 1.6f : 1.0f);
+
+    // Dark text on the bright states, light text otherwise, so it reads either way.
+    const bool bright = fill.getPerceivedBrightness() > 0.55f;
+    const auto textCol = bright ? ui::col::bg : ui::col::text;
+
+    auto area = getLocalBounds().reduced (6, 0);
+    g.setColour (textCol.withAlpha (0.65f));
+    g.setFont (ui::font (11.0f));
+    g.drawText (juce::String (padNumber), area.removeFromLeft (18), juce::Justification::centredLeft);
+
+    g.setColour (textCol);
+    g.setFont (ui::font (11.5f, true));
+    g.drawText (name.isEmpty() ? juce::String ("-") : name, area, juce::Justification::centredLeft, true);
+}
+
 PadGrid::PadGrid (MC909EditorProcessor& p) : ParamControl (p)
 {
     for (int i = 0; i < 16; ++i)
@@ -733,6 +755,20 @@ PadGrid::PadGrid (MC909EditorProcessor& p) : ParamControl (p)
                 proc.setSelectedPad (i);
         };
         addAndMakeVisible (b);
+    }
+
+    startTimerHz (30);
+}
+
+void PadGrid::timerCallback()
+{
+    // Pad i is key 59 + i (the 909's rhythm tone keys 59-74) on the selected part's channel.
+    const int part = proc.getSelectedPart();
+
+    for (int i = 0; i < 16; ++i)
+    {
+        const auto s = proc.takeNoteState (part, 59 + i, MC909EditorProcessor::strikePads);
+        buttons[i].setLit ((s & (1 | MC909EditorProcessor::strikePads)) != 0);
     }
 }
 
@@ -765,8 +801,7 @@ void PadGrid::refresh()
 
     for (int i = 0; i < 16; ++i)
     {
-        const auto name = proc.getPadName (i);
-        buttons[i].setButtonText (juce::String (i + 1) + "  " + (name.isEmpty() ? juce::String ("-") : name));
+        buttons[i].setPad (i + 1, proc.getPadName (i));
         buttons[i].setColour (juce::TextButton::buttonOnColourId, accent);
         buttons[i].setToggleState (i == proc.getSelectedPad(), juce::dontSendNotification);
     }
@@ -850,7 +885,7 @@ void RhythmPage::resized()
     auto top = r.removeFromTop (juce::jmin (250, r.getHeight() * 11 / 20));
     r.removeFromTop (gap);
 
-    const auto cols = splitColumns (top, { 0.17f, 0.27f, 0.24f, 0.32f }, gap);
+    const auto cols = splitColumns (top, { 0.23f, 0.23f, 0.235f, 0.305f }, gap);
 
     {   // PADS
         cards.push_back ({ cols[0], "Pads" });

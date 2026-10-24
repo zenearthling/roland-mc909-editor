@@ -44,7 +44,10 @@ MidiHub::~MidiHub()
 
 bool MidiHub::openOutput (const juce::String& identifier)
 {
-    output.reset();
+    {
+        const juce::ScopedLock sl (outLock);
+        output.reset();
+    }
     outputId.clear();
 
     if (identifier.isEmpty())
@@ -53,7 +56,11 @@ bool MidiHub::openOutput (const juce::String& identifier)
         return false;
     }
 
-    output = juce::MidiOutput::openDevice (identifier);
+    auto opened = juce::MidiOutput::openDevice (identifier);
+    {
+        const juce::ScopedLock sl (outLock);
+        output = std::move (opened);
+    }
     if (output != nullptr)
         outputId = identifier;
 
@@ -94,9 +101,22 @@ void MidiHub::closeAll()
         input->stop();
 
     input.reset();
-    output.reset();
+    {
+        const juce::ScopedLock sl (outLock);
+        output.reset();
+    }
     inputId.clear();
     outputId.clear();
+}
+
+void MidiHub::sendNow (const juce::MidiMessage& m)
+{
+    const juce::ScopedLock sl (outLock);
+    if (output != nullptr)
+    {
+        output->sendMessageNow (m);
+        ++txSent;
+    }
 }
 
 void MidiHub::send (const juce::MidiMessage& m, int gapMs)
@@ -144,7 +164,11 @@ void MidiHub::timerCallback()
         queue.pop_front();
     }
 
-    output->sendMessageNow (next.msg);
+    {
+        const juce::ScopedLock sl (outLock);
+        if (output != nullptr)
+            output->sendMessageNow (next.msg);
+    }
     nextSendAt = now + (juce::uint32) next.gapMs;
     ++txSent;
 
@@ -155,6 +179,13 @@ void MidiHub::timerCallback()
 void MidiHub::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& m)
 {
     ++rxAll;
+
+    if (m.isNoteOnOrOff())
+    {
+        if (onNoteMessage)
+            onNoteMessage (m);
+        return;
+    }
 
     if (! m.isSysEx())
         return;

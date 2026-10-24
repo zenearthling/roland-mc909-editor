@@ -122,7 +122,6 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     content.addAndMakeVisible (partBox);
     content.addAndMakeVisible (automateLabel);
     content.addAndMakeVisible (detectButton);
-    content.addAndMakeVisible (searchButton);
     content.addAndMakeVisible (getButton);
     content.addAndMakeVisible (sendButton);
     content.addAndMakeVisible (patchNameLabel);
@@ -137,11 +136,12 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     channelLabel.setInterceptsMouseClicks (false, false);
     content.addAndMakeVisible (channelLabel);
 
-    loadedLabel.setFont (ui::font (10.5f, true));
-    loadedLabel.setColour (juce::Label::textColourId, juce::Colour (0xffff8a3d));
-    loadedLabel.setJustificationType (juce::Justification::centredLeft);
-    loadedLabel.setInterceptsMouseClicks (false, false);
-    content.addAndMakeVisible (loadedLabel);
+    thruButton.setTooltip ("Pass MIDI that the host sends this plugin on to the MC-909. "
+                           "Turn on when your MIDI tracks and the MPK are routed to this plugin; "
+                           "turn off if they also go straight to the UM-1, or notes will double.");
+    thruButton.setToggleState (proc.getMidiThru(), juce::dontSendNotification);
+    thruButton.onClick = [this] { proc.setMidiThru (thruButton.getToggleState()); };
+    content.addAndMakeVisible (thruButton);
 
     macroBar = std::make_unique<MacroBar> (proc, [this] { teachModeChanged(); });
     content.addAndMakeVisible (*macroBar);
@@ -152,18 +152,6 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     helpOverlay = std::make_unique<HelpOverlay> ([this] (juce::Point<int> p, juce::String& t, juce::String& r, juce::String& b) { return helpAt (p, t, r, b); });
     content.addChildComponent (*helpOverlay);
     macroBar->onHelp = [this] { helpModeChanged(); };
-
-    // Added last so it sits above everything else, including the teach / help layers.
-    SearchOverlay::Host searchHost;
-    searchHost.describeAction = [this] (const mc909search::Entry& e) { return searchActionText (e); };
-    searchHost.perform        = [this] (const mc909search::Entry& e, bool audition) { return performSearchAction (e, audition); };
-    searchHost.closed         = [this] { grabKeyboardFocus(); };
-    searchOverlay = std::make_unique<SearchOverlay> (std::move (searchHost));
-    content.addChildComponent (*searchOverlay);
-
-    searchButton.setTooltip ("Search every waveform, patch, rhythm kit and pattern in the MC-909  (Ctrl/Cmd+F)");
-    searchButton.onClick = [this] { openSearch(); };
-    setWantsKeyboardFocus (true);
 
     automateLabel.setFont (ui::font (10.5f, true).withExtraKerningFactor (0.12f));
     automateLabel.setColour (juce::Label::textColourId, ui::col::textDim);
@@ -288,32 +276,12 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
 
     for (const auto& t : tabDefs)
     {
-        if (t.block == Block::mastering || t.block == Block::compEQ || t.block == Block::partInfoPart)
-        {
-            // graphs, dials and a mixer instead of a list of sliders
-            if (t.block == Block::partInfoPart)
-            {
-                auto* mixer = new PartMixerPage (proc);
-                mixer->getBoard().onPartPicked = [this] (int part)
-                {
-                    partBox.setSelectedId (part + 1, juce::sendNotificationSync);   // same as picking it in the box
-                };
-                pages.add (mixer);
-            }
-            else
-                pages.add (t.block == Block::mastering ? static_cast<ui::PageBase*> (new MasterPage (proc))
-                                                       : static_cast<ui::PageBase*> (new CompEqPage (proc)));
-            tabs.addTab (t.name, tabColour, pages.getLast(), false);
-            continue;
-        }
-
         auto* panel = new ParamPanel (proc, t.block);
         panels.add (panel);
         tabs.addTab (t.name, tabColour, panel, false);
     }
 
     keyboard.setAvailableRange (24, 96);
-    keyboard.setScrollButtonsVisible (false);       // the whole range fits; resized() sets the key width
     keyboard.setKeyWidth (17.0f);
     keyboard.setColour (juce::MidiKeyboardComponent::whiteNoteColourId, juce::Colour (0xffd8dbe1));
     keyboard.setColour (juce::MidiKeyboardComponent::blackNoteColourId, juce::Colour (0xff17191e));
@@ -358,7 +326,7 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
         setSize ((int) (kBaseW * z), (int) (kBaseH * z));
     }
 
-    startTimerHz (12);
+    startTimerHz (30);
 }
 
 MC909EditorComponent::~MC909EditorComponent()
@@ -369,159 +337,19 @@ MC909EditorComponent::~MC909EditorComponent()
     setLookAndFeel (nullptr);
 }
 
-//==============================================================================
-// Search
-//==============================================================================
-bool MC909EditorComponent::keyPressed (const juce::KeyPress& k)
-{
-    // Ctrl+F on Windows / Linux, Cmd+F on macOS.
-    if (k == juce::KeyPress ('f', juce::ModifierKeys::commandModifier, 0))
-    {
-        openSearch();
-        return true;
-    }
-    return false;
-}
-
-void MC909EditorComponent::openSearch()
-{
-    searchOverlay->open();
-}
-
-bool MC909EditorComponent::rhythmTabActive() const
-{
-    return tabs.getCurrentTabName() == "Rhythm";
-}
-
-void MC909EditorComponent::flashStatus (const juce::String& text)
-{
-    statusFlash = text;
-    statusFlashUntil = juce::Time::getMillisecondCounter() + 5000;
-    statusLabel.setText (text, juce::dontSendNotification);
-}
-
-void MC909EditorComponent::setLoaded (int part, const juce::String& text)
-{
-    loadedText[juce::jlimit (0, 15, part)] = text;
-    if (part == proc.getSelectedPart())
-        loadedLabel.setText (text, juce::dontSendNotification);
-}
-
-void MC909EditorComponent::auditionSoon (int note, int delayMs)
-{
-    juce::Component::SafePointer<MC909EditorComponent> safe (this);
-    juce::Timer::callAfterDelay (delayMs, [safe, note]
-    {
-        if (safe == nullptr)
-            return;
-
-        safe->proc.playTestNote (note, 100, true);
-        juce::Timer::callAfterDelay (450, [safe, note]
-        {
-            if (safe != nullptr)
-                safe->proc.playTestNote (note, 0, false);
-        });
-    });
-}
-
-juce::String MC909EditorComponent::searchActionText (const mc909search::Entry& e) const
-{
-    using mc909search::Kind;
-    const int part = proc.getSelectedPart() + 1;
-
-    switch (e.kind)
-    {
-        case Kind::waveform:
-        {
-            const auto tone = "tone " + juce::String (proc.getSelectedTone() + 1);
-            if (rhythmTabActive())
-                return "Load waveform " + juce::String (e.number) + " into pad "
-                       + juce::MidiMessage::getMidiNoteName (59 + proc.getSelectedPad(), true, true, 4) + ", " + tone;
-            return "Load waveform " + juce::String (e.number) + " into Part " + juce::String (part) + ", " + tone;
-        }
-        case Kind::patch:
-            return "Select " + juce::String (e.where) + " on Part " + juce::String (part);
-        case Kind::rhythmKit:
-            return "Select " + juce::String (e.where) + " on Part " + juce::String (part);
-        case Kind::pattern:
-        case Kind::patternSet:
-        case Kind::rpsPattern:
-        case Kind::rpsSet:
-            break;      // the editor has no way to load these, so they are reference only
-    }
-
-    return "Copy the name to the clipboard";
-}
-
-juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry& e, bool audition)
-{
-    using mc909search::Kind;
-    const int part = proc.getSelectedPart();
-    juce::String done;
-
-    switch (e.kind)
-    {
-        case Kind::waveform:
-        {
-            // Internal waveform on the left channel; right off, which the unit plays on both sides.
-            const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
-            proc.setParameterValue (ui::findParam (root + "wave_group"), 0);
-            proc.setParameterValue (ui::findParam (root + "wave_l"), e.number);
-            proc.setParameterValue (ui::findParam (root + "wave_r"), 0);
-
-            done = "Loaded " + juce::String (juce::CharPointer_UTF8 (e.name)) + " (waveform " + juce::String (e.number) + ")";
-            setLoaded (part, "Now loaded:  Waveform " + juce::String (e.number).paddedLeft ('0', 3) + "  "
-                                 + juce::String (juce::CharPointer_UTF8 (e.name))
-                                 + (rhythmTabActive() ? "  (pad " + juce::String (proc.getSelectedPad() + 1) + ")"
-                                                      : "  (tone " + juce::String (proc.getSelectedTone() + 1) + ")"));
-            if (audition)
-                auditionSoon (rhythmTabActive() ? 59 + proc.getSelectedPad() : 60, 120);
-            break;
-        }
-
-        case Kind::patch:
-        case Kind::rhythmKit:
-        {
-            // Preset patches: MSB 81, LSB 64-70 (banks A-G). Preset rhythm sets: MSB 82, LSB 64.
-            const bool kit = (e.kind == Kind::rhythmKit);
-            proc.selectBankProgram (part, kit ? 82 : 81, kit ? 64 : 64 + e.bank, e.number - 1);
-
-            // The edit buffer just changed under us; read it back once the unit has switched.
-            juce::Component::SafePointer<MC909EditorComponent> safe (this);
-            juce::Timer::callAfterDelay (350, [safe]
-            {
-                if (safe != nullptr)
-                    safe->proc.requestAll();
-            });
-
-            done = "Selected " + juce::String (juce::CharPointer_UTF8 (e.name)) + " on Part " + juce::String (part + 1);
-            setLoaded (part, "Now loaded:  " + juce::String (e.where) + "  " + juce::String (juce::CharPointer_UTF8 (e.name)));
-            if (audition)
-                auditionSoon (60, 600);
-            break;
-        }
-
-        case Kind::pattern:
-        case Kind::patternSet:
-        case Kind::rpsPattern:
-        case Kind::rpsSet:
-            juce::SystemClipboard::copyTextToClipboard (juce::String (juce::CharPointer_UTF8 (e.name)));
-            done = "Copied \"" + juce::String (juce::CharPointer_UTF8 (e.name)) + "\"";
-            break;
-    }
-
-    flashStatus (done);
-    return done;
-}
-
-//==============================================================================
 void MC909EditorComponent::handleNoteOn (juce::MidiKeyboardState*, int, int note, float velocity)
 {
+    if (applyingExternalKeys)
+        return;
+
     proc.playTestNote (note, juce::jlimit (1, 127, (int) (velocity * 127.0f)), true);
 }
 
 void MC909EditorComponent::handleNoteOff (juce::MidiKeyboardState*, int, int note, float)
 {
+    if (applyingExternalKeys)
+        return;
+
     proc.playTestNote (note, 0, false);
 }
 
@@ -560,8 +388,45 @@ void MC909EditorComponent::deviceDetected (const juce::String&)
     deviceSeen = true;
 }
 
+void MC909EditorComponent::syncKeys()
+{
+    // Show the notes playing on the selected part's MIDI channel. Changing the shown
+    // state must not send test notes back to the unit, hence the guard.
+    const int part = proc.getSelectedPart();
+    const juce::ScopedValueSetter<bool> guard (applyingExternalKeys, true);
+
+    if (part != shownKeysChannel)
+    {
+        for (int n = 0; n < 128; ++n)
+            if (shownKeys[n])
+            {
+                keyboardState.noteOff (1, n, 0.0f);
+                shownKeys[n] = false;
+            }
+        shownKeysChannel = part;
+    }
+
+    for (int n = 0; n < 128; ++n)
+    {
+        const bool want = (proc.takeNoteState (part, n, MC909EditorProcessor::strikeKeyboard) & (1 | MC909EditorProcessor::strikeKeyboard)) != 0;
+
+        if (want && ! shownKeys[n])
+        {
+            keyboardState.noteOn (1, n, 0.8f);
+            shownKeys[n] = true;
+        }
+        else if (! want && shownKeys[n])
+        {
+            keyboardState.noteOff (1, n, 0.0f);
+            shownKeys[n] = false;
+        }
+    }
+}
+
 void MC909EditorComponent::timerCallback()
 {
+    syncKeys();
+
     if (needsRefresh)
     {
         needsRefresh = false;
@@ -573,9 +438,7 @@ void MC909EditorComponent::timerCallback()
     const bool portsOk = hub.isConnected() && hub.isInputOpen();
 
     juce::String text;
-    if (statusFlash.isNotEmpty() && juce::Time::getMillisecondCounter() < statusFlashUntil)
-        text = statusFlash;
-    else if (pending > 0)
+    if (pending > 0)
         text = "Sending... " + juce::String (pending);
     else
         text << (deviceSeen ? "909 found  " : "")
@@ -605,8 +468,6 @@ void MC909EditorComponent::refreshAll()
 
     if (! patchNameEditor.hasKeyboardFocus (true))
         patchNameEditor.setText (proc.getPatchName(), juce::dontSendNotification);
-
-    loadedLabel.setText (loadedText[juce::jlimit (0, 15, proc.getSelectedPart())], juce::dontSendNotification);
 
     partBox.setSelectedId (proc.getSelectedPart() + 1, juce::dontSendNotification);
 
@@ -766,9 +627,6 @@ void MC909EditorComponent::resized()
         second.removeFromLeft (2);
     }
 
-    second.removeFromLeft (6);
-    searchButton.setBounds (second.removeFromLeft (92).reduced (2, 3));
-
     auto sendArea = second.removeFromRight (260);
     getButton.setBounds  (sendArea.removeFromLeft (126).reduced (2, 3));
     sendButton.setBounds (sendArea.removeFromLeft (126).reduced (2, 3));
@@ -782,22 +640,17 @@ void MC909EditorComponent::resized()
 
     r.removeFromTop (6);
     keyboard.setBounds (r.removeFromBottom (68).reduced (0, 2));
-
-    // C1..C7 is 43 white keys. Stretch them to exactly the width of the editor.
-    keyboard.setKeyWidth ((float) keyboard.getWidth() / 43.0f);
-    keyboard.setLowestVisibleKey (24);
     {
         auto row = r.removeFromBottom (18);
         zoomOutButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
         zoomInButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
-        loadedLabel.setBounds (row.removeFromLeft (560).reduced (8, 0));
+        thruButton.setBounds (row.removeFromRight (110));
         channelLabel.setBounds (row);
     }
     macroBar->setBounds (r.removeFromBottom (42));
     tabs.setBounds (r);
     teachOverlay->setBounds (r.withTrimmedTop (32));
     helpOverlay->setBounds (r.withTrimmedTop (32));
-    searchOverlay->setBounds (0, 0, kBaseW, kBaseH);
 }
 
 //==============================================================================

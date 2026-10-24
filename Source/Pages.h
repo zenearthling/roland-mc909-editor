@@ -124,8 +124,6 @@ private:
     juce::String unitName[3] { "MFX 1", "MFX 2", "Reverb" };
 
     ui::ParamToggle *sw[4];
-    juce::TextButton probeBtn[3];
-    void probe (int unit);
 
     struct Unit
     {
@@ -154,17 +152,36 @@ private:
     juce::Rectangle<int> partBox, compBox, mfx1Box, mfx2Box, revBox, mixBox, dir1Box, dir2Box;
 };
 
-/** The 16 pads of a rhythm kit, plus the kit name underneath. */
-class PadGrid : public ui::ParamControl
+/** One pad button: number, then the wave name at a fixed size, and a flash while its key plays. */
+class PadButton : public juce::TextButton
+{
+public:
+    void setPad (int number, const juce::String& waveName);
+    void setLit (bool on);
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    int padNumber = 1;
+    juce::String name;
+    bool lit = false;
+};
+
+/** The 16 pads of a rhythm kit, plus the kit name underneath. The pads light up when their
+    key (59 + pad) arrives on the part's MIDI channel, from Live, the MPK or the unit. */
+class PadGrid : public ui::ParamControl,
+                private juce::Timer
 {
 public:
     explicit PadGrid (MC909EditorProcessor&);
+    ~PadGrid() override { stopTimer(); }
     void resized() override;
     void paint (juce::Graphics&) override;
     void refresh() override;
 
 private:
-    juce::TextButton buttons[16];
+    void timerCallback() override;
+
+    PadButton buttons[16];
 };
 
 /** Rhythm kit editor: pick a pad, then edit its tone sections (wave, mix, velocity range),

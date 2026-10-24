@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <deque>
 #include <atomic>
@@ -49,6 +50,10 @@ public:
         (-1 = use the default interval). */
     void send (const juce::MidiMessage& m, int gapMs = -1);
 
+    /** Send straight away, skipping the paced queue. For live performance notes, which
+        must not wait behind a SysEx dump. Safe to call from the audio thread. */
+    void sendNow (const juce::MidiMessage& m);
+
     /** Queue several messages as one burst. */
     void sendAll (const std::vector<juce::MidiMessage>& ms);
 
@@ -63,6 +68,10 @@ public:
     /** Interval between queued messages, in milliseconds. */
     void setSendInterval (int ms) { sendIntervalMs = juce::jmax (1, ms); }
 
+    /** Called on the MIDI thread for every note-on / note-off that arrives on the input
+        (pads or keys played on the unit itself). Keep it quick and lock-free. */
+    std::function<void (const juce::MidiMessage&)> onNoteMessage;
+
     /** Append a line to the MIDI log file (Documents/MC909-Editor-midi-log.txt). */
     void logLine (const juce::String& line);
     static juce::File logFile();
@@ -74,6 +83,7 @@ private:
     void timerCallback() override;
     void handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage&) override;
 
+    juce::CriticalSection outLock;
     std::unique_ptr<juce::MidiOutput> output;
     std::unique_ptr<juce::MidiInput>  input;
     juce::String outputId, inputId;

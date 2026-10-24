@@ -2,7 +2,6 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MC909Map.h"
 #include "MidiHub.h"
-#include "AudioAnalyser.h"
 
 #include <map>
 
@@ -16,13 +15,10 @@ public:
     ~MC909EditorProcessor() override;
 
     //==============================================================================
-    void prepareToPlay (double sampleRate, int) override { analyser.prepare (sampleRate); }
+    void prepareToPlay (double, int) override {}
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout&) const override { return true; }
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
-
-    /** Read-only look at the audio passing through (the MC-909's return, when it is routed here). */
-    AudioAnalyser analyser;
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -52,14 +48,6 @@ public:
     /** Current raw value from the local mirror of the device state. */
     int getParameterValue (const mc909::ParamDef& p) const;
 
-    /** Part Info settings (level, pan, sends, output, receive) of ANY of the 16 parts, without
-        changing which part is selected. Used by the Part mixer. */
-    int  getPartValue (int part, const mc909::ParamDef& p) const;
-    void setPartValue (int part, const mc909::ParamDef& p, int rawValue, bool sendToDevice = true);
-    bool havePartInfo (int part) const { return juce::isPositiveAndBelow (part, 16) && partInfoSeen[part]; }
-    bool haveAllPartInfo() const;
-    void requestPartInfo (int gapMs = 60);   ///< asks the unit for all 16 parts' Part Info blocks
-
     /** Patch name lives at Patch Common 0x00..0x0B as 12 ASCII bytes. */
     juce::String getPatchName() const;
     void setPatchName (const juce::String& newName);
@@ -74,6 +62,28 @@ public:
 
     /** Push the whole local edit buffer back to the device. */
     void sendAll();
+
+    //==============================================================================
+    // Note activity, for the keyboard display. Fed by MIDI the host routes to the plugin
+    // (instrument build) and by notes arriving from the unit on the MIDI In port.
+    //==============================================================================
+    void noteSeen (int channel0, int note, bool on);
+
+    /** Bit 0 = held. Bits 1 and 2 = "struck since last looked at", one per display (keyboard
+        and pad list) so very short notes still flash. Pass the display's bit to clear it. */
+    static constexpr uint8_t strikeKeyboard = 2, strikePads = 4;
+    uint8_t takeNoteState (int channel0, int note, uint8_t strikeBit);
+
+    /** Forward MIDI the host sends this plugin on to the MC-909 (instrument build). */
+    void setMidiThru (bool on)  { midiThru = on; }
+    bool getMidiThru() const    { return midiThru.load(); }
+
+    static constexpr bool isInstrumentBuild =
+#ifdef MC909_INSTRUMENT
+        true;
+#else
+        false;
+#endif
 
     void setSelectedPart (int part);
     void setSelectedTone (int tone);
@@ -107,11 +117,6 @@ public:
 
     /** Audition a note on the device without leaving the editor. */
     void playTestNote (int noteNumber, int velocity, bool on);
-
-    /** Bank Select (CC#0 = msb, CC#32 = lsb) then Program Change (0-based) on a part's MIDI channel.
-        This is how a preset patch (MSB 81) or rhythm set (MSB 82) is chosen; the unit's edit
-        buffer changes, so the caller should read it back afterwards (requestAll). */
-    void selectBankProgram (int part, int msb, int lsb, int program);
 
     /** Probe every MIDI input for an MC-909 identity reply. */
     void detectDevice();
@@ -156,7 +161,9 @@ private:
 
     std::map<juce::String, std::vector<uint8_t>> blocks;
 
-    bool    partInfoSeen[16] {};
+    std::atomic<uint8_t> noteStates[16][128] {};
+    std::atomic<bool>    midiThru { isInstrumentBuild };
+
     int     selectedPart = 0;
     int     selectedTone = 0;
     int     selectedPad  = 1;     // pad 2 = key C4
