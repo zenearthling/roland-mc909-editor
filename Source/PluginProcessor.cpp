@@ -159,10 +159,13 @@ uint8_t MC909EditorProcessor::takeNoteState (int channel0, int note, uint8_t str
 
 void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
-    // Audio is not touched in the effect build; this plugin is a control surface. In the
-    // instrument build there is no audio input, so the output is silence.
+    // Effect build: audio passes through untouched and is only looked at, for the meters and
+    // spectrum on the Master tab. Instrument build: there is no audio input, so the output is
+    // silence.
     if (isInstrumentBuild)
         buffer.clear();
+    else
+        analyser.process (buffer);
 
     // MIDI the host routes here (a MIDI track, or the MPK) lights the on-screen keyboard
     // and, if Thru is on, is passed on to the MC-909 over the plugin's own MIDI Out.
@@ -273,6 +276,52 @@ void MC909EditorProcessor::setParameterValue (const ParamDef& p, int rawValue, b
     }
 
     editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
+//==============================================================================
+int MC909EditorProcessor::getPartValue (int part, const ParamDef& p) const
+{
+    jassert (p.block == Block::partInfoPart);
+    const auto it = blocks.find ("partInfo:" + juce::String (juce::jlimit (0, 15, part)));
+    return it == blocks.end() ? p.rawMin : readValue (it->second, p.offset, p.numBytes);
+}
+
+void MC909EditorProcessor::setPartValue (int part, const ParamDef& p, int rawValue, bool sendToDevice)
+{
+    jassert (p.block == Block::partInfoPart);
+    part = juce::jlimit (0, 15, part);
+    rawValue = juce::jlimit (p.rawMin, p.rawMax, rawValue);
+
+    std::vector<uint8_t> bytes;
+    roland::toNibbles (rawValue, p.numBytes, bytes);
+
+    auto& data = blocks["partInfo:" + juce::String (part)];
+    if (data.size() < mc909::blockByteCount (Block::partInfoPart))
+        data.resize (mc909::blockByteCount (Block::partInfoPart), 0);
+
+    for (size_t i = 0; i < bytes.size() && p.offset + i < data.size(); ++i)
+        data[p.offset + i] = bytes[i];
+
+    if (sendToDevice)
+        hub.send (roland::makeDT1 (deviceId, blockAddress (Block::partInfoPart, part, 0, 0) + p.offset,
+                                   bytes.data(), bytes.size()));
+
+    editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
+bool MC909EditorProcessor::haveAllPartInfo() const
+{
+    for (bool seen : partInfoSeen)
+        if (! seen)
+            return false;
+    return true;
+}
+
+void MC909EditorProcessor::requestPartInfo (int gapMs)
+{
+    for (int part = 0; part < 16; ++part)
+        hub.send (roland::makeRQ1 (deviceId, blockAddress (Block::partInfoPart, part, 0, 0),
+                                   mc909::blockByteCount (Block::partInfoPart)), gapMs);
 }
 
 //==============================================================================
@@ -554,6 +603,14 @@ void MC909EditorProcessor::playTestNote (int noteNumber, int velocity, bool on)
                  : juce::MidiMessage::noteOff (channel, noteNumber));
 }
 
+void MC909EditorProcessor::selectBankProgram (int part, int msb, int lsb, int program)
+{
+    const int channel = juce::jlimit (1, 16, part + 1);
+    hub.sendAll ({ juce::MidiMessage::controllerEvent (channel, 0,  juce::jlimit (0, 127, msb)),
+                   juce::MidiMessage::controllerEvent (channel, 32, juce::jlimit (0, 127, lsb)),
+                   juce::MidiMessage::programChange   (channel,     juce::jlimit (0, 127, program)) });
+}
+
 void MC909EditorProcessor::detectDevice()
 {
     hub.send (roland::makeIdentityRequest());
@@ -625,6 +682,25 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
 
     const int savedTone = selectedTone, savedPad = selectedPad;
     bool matched = false;
+
+    // Part Info of any of the 16 parts (the Part mixer asks for all of them).
+    for (int part = 0; part < 16 && ! matched; ++part)
+    {
+        const uint32_t base = blockAddress (Block::partInfoPart, part, 0, 0).toLinear();
+        if (incoming >= base && incoming < base + mc909::blockByteCount (Block::partInfoPart))
+        {
+            auto& data = blocks["partInfo:" + juce::String (part)];
+            if (data.size() < mc909::blockByteCount (Block::partInfoPart))
+                data.resize (mc909::blockByteCount (Block::partInfoPart), 0);
+
+            for (size_t i = 0; i < dt.data.size(); ++i)
+                if (incoming - base + i < data.size())
+                    data[incoming - base + i] = dt.data[i];
+
+            partInfoSeen[part] = true;
+            matched = true;
+        }
+    }
 
     for (auto b : candidates)
     {

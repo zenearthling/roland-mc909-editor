@@ -1,4 +1,5 @@
 #include "Pages.h"
+#include "SearchIndex.h"
 #include "FxData.h"
 
 using namespace ui;
@@ -28,6 +29,54 @@ namespace
 }
 
 //==============================================================================
+WaveBar::WaveBar (MC909EditorProcessor& p, const juce::String& rootPrefix)
+    : ParamControl (p), root (rootPrefix)
+{
+    nameLabel.setFont (ui::font (11.5f, true));
+    nameLabel.setColour (juce::Label::textColourId, ui::col::text);
+    nameLabel.setJustificationType (juce::Justification::centredLeft);
+    nameLabel.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (nameLabel);
+
+    browse.setTooltip ("Browse all 693 internal waveforms by name. Up / Down loads and plays each one; "
+                       "Enter keeps it, Esc goes back to the old one.");
+    browse.onClick = [this] { if (onBrowse) onBrowse(); };
+    addAndMakeVisible (browse);
+}
+
+void WaveBar::resized()
+{
+    auto r = getLocalBounds();
+    browse.setBounds (r.removeFromRight (86));
+    r.removeFromRight (6);
+    nameLabel.setBounds (r);
+}
+
+void WaveBar::refresh()
+{
+    const bool internal = proc.getParameterValue (ui::findParam (root + "wave_group")) == 0;
+    const int l = proc.getParameterValue (ui::findParam (root + "wave_l"));
+    const int r = proc.getParameterValue (ui::findParam (root + "wave_r"));
+
+    auto nameOf = [] (int n)
+    {
+        const char* s = mc909search::waveformName (n);
+        return s != nullptr ? juce::String (juce::CharPointer_UTF8 (s)) : juce::String ("(no name)");
+    };
+
+    juce::String text;
+    if (! internal)
+        text = "Card / expansion wave";
+    else if (r > 0 && r != l)
+        text = nameOf (l) + "  /  " + nameOf (r);
+    else
+        text = nameOf (l);
+
+    nameLabel.setText (text, juce::dontSendNotification);
+    nameLabel.setTooltip (text);
+}
+
+//==============================================================================
 TonePage::TonePage (MC909EditorProcessor& p) : PageBase (p)
 {
     waveGroup = add<ParamChoice> ("tone.wave_group", "Wave Group");
@@ -35,6 +84,8 @@ TonePage::TonePage (MC909EditorProcessor& p) : PageBase (p)
     waveGid   = add<ParamNumber> ("tone.wave_gid", "Group ID");
     waveL     = add<ParamNumber> ("tone.wave_l", "Wave L");
     waveR     = add<ParamNumber> ("tone.wave_r", "Wave R");
+    waveBar   = add<WaveBar> (juce::String ("tone."));
+    waveBar->onBrowse = [this] { if (onBrowseWaves) onBrowseWaves(); };
     fxmSwitch = add<ParamToggle> ("tone.fxm_sw", "FXM");
     fxmColor  = add<ParamChoice> ("tone.fxm_color", "FXM Color");
     fxmDepth  = add<ParamKnob>   ("tone.fxm_depth", "FXM Depth");
@@ -112,7 +163,10 @@ void TonePage::resized()
         nums.removeFromLeft (6);
         waveR->setBounds (nums);
 
-        c.removeFromTop (6);
+        c.removeFromTop (4);
+        waveBar->setBounds (c.removeFromTop (24));
+
+        c.removeFromTop (4);
         fxmSwitch->setBounds (c.getX(), c.getY(), 62, 40);
         fxmColor->setBounds (c.getX() + 70, c.getY(), 62, 40);
         fxmDepth->setBounds (c.getX() + 140, c.getY() - 4, ParamKnob::cellWidth, ParamKnob::cellHeight);
@@ -583,9 +637,30 @@ FxPage::FxPage (MC909EditorProcessor& p) : PageBase (p)
             u.params.push_back (add<ParamNumber> (tag + ".p" + juce::String (n), "P" + juce::String (n)));
     };
 
+    const char* probeNames[3] { "Probe MFX 1", "Probe MFX 2", "Probe Reverb" };
+    for (int i = 0; i < 3; ++i)
+    {
+        probeBtn[i].setButtonText (probeNames[i]);
+        probeBtn[i].setTooltip ("Test tool: writes 1, 2, 3 ... into the effect's raw slots so a photo of the unit's screen shows "
+                                "which slot feeds which row. Changes the unit's edit buffer only; re-select the patch to undo.");
+        probeBtn[i].onClick = [this, i] { probe (i); };
+        addAndMakeVisible (probeBtn[i]);
+    }
+
     build (mfx1, "mfx1", 32, true, true);
     build (mfx2, "mfx2", 32, true, false);
     build (rev,  "rev",  20, false, false);
+}
+
+void FxPage::probe (int unit)
+{
+    const char* tags[3] { "mfx1", "mfx2", "rev" };
+    const int count = unit == 2 ? 20 : 32;
+    for (int n = 1; n <= count; ++n)
+    {
+        const auto& def = ui::findParam (juce::String (tags[unit]) + ".p" + juce::String (n));
+        proc.setParameterValue (def, def.dispSub + n);
+    }
 }
 
 void FxPage::refresh()
@@ -675,6 +750,12 @@ void FxPage::resized()
         {
             t->setBounds (c.removeFromLeft (130).withHeight (36));
             c.removeFromLeft (10);
+        }
+        c.removeFromLeft (30);
+        for (auto& b : probeBtn)
+        {
+            b.setBounds (c.removeFromLeft (110).withHeight (30));
+            c.removeFromLeft (6);
         }
     }
 
@@ -820,6 +901,8 @@ RhythmPage::RhythmPage (MC909EditorProcessor& p) : PageBase (p)
     waveGid   = add<ParamNumber> ("rn.t.wave_gid", "Group ID");
     waveL     = add<ParamNumber> ("rn.t.wave_l", "Wave L");
     waveR     = add<ParamNumber> ("rn.t.wave_r", "Wave R");
+    waveBar   = add<WaveBar> (juce::String ("rn.t."));
+    waveBar->onBrowse = [this] { if (onBrowseWaves) onBrowseWaves(); };
     fxmSwitch = add<ParamToggle> ("rn.t.fxm_sw", "FXM");
     fxmColor  = add<ParamChoice> ("rn.t.fxm_color", "FXM Color");
     fxmDepth  = add<ParamKnob>   ("rn.t.fxm_depth", "FXM Depth");
@@ -913,7 +996,10 @@ void RhythmPage::resized()
         nums.removeFromLeft (6);
         waveR->setBounds (nums);
 
-        c.removeFromTop (6);
+        c.removeFromTop (4);
+        waveBar->setBounds (c.removeFromTop (24));
+
+        c.removeFromTop (4);
         fxmSwitch->setBounds (c.getX(), c.getY(), 62, 40);
         fxmColor->setBounds (c.getX() + 70, c.getY(), 62, 40);
         fxmDepth->setBounds (c.getX() + 140, c.getY() - 4, ParamKnob::cellWidth, ParamKnob::cellHeight);

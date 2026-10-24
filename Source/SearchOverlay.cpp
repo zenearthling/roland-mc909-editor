@@ -138,6 +138,8 @@ SearchOverlay::~SearchOverlay()
 //==============================================================================
 void SearchOverlay::open()
 {
+    autoLoad = false;
+    ++loadToken;
     setVisible (true);
     toFront (true);
     flash.clear();
@@ -147,11 +149,70 @@ void SearchOverlay::open()
     repaint();
 }
 
+void SearchOverlay::openOnWaveforms (int currentWave)
+{
+    searchField.setText ({}, false);
+    category = (int) Kind::waveform + 1;
+    open();                                  // runs the search; autoLoad is still off
+
+    committed = false;
+    autoChanged = false;
+    originalWave = currentWave;
+
+    if (currentWave > 0)
+        for (int row = 0; row < (int) shown.size(); ++row)
+            if (kEntries[shown[(size_t) row].index].number == currentWave)
+            {
+                results.selectRow (row);
+                results.scrollToEnsureRowIsOnscreen (row);
+                break;
+            }
+
+    autoLoad = true;
+    repaint();
+}
+
+void SearchOverlay::selectedRowsChanged (int)
+{
+    repaint();
+
+    if (! autoLoad || ! isVisible())
+        return;
+
+    const auto* e = selectedEntry();
+    if (e == nullptr || e->kind != Kind::waveform)
+        return;
+
+    // Wait a moment so holding Down does not fire a load for every row it passes.
+    const int token = ++loadToken;
+    juce::Component::SafePointer<SearchOverlay> safe (this);
+    juce::Timer::callAfterDelay (220, [safe, token]
+    {
+        if (safe != nullptr && safe->autoLoad && safe->loadToken == token && safe->isVisible())
+        {
+            safe->autoChanged = true;
+            safe->activate (true);
+        }
+    });
+}
+
 void SearchOverlay::close()
 {
     if (! isVisible())
         return;
 
+    ++loadToken;
+
+    // Esc after browsing: put the original wave back (silently).
+    if (autoLoad && ! committed && autoChanged && originalWave > 0 && host.perform)
+        for (int i = 0; i < kNumEntries; ++i)
+            if (kEntries[i].kind == Kind::waveform && kEntries[i].number == originalWave)
+            {
+                host.perform (kEntries[i], false);
+                break;
+            }
+
+    autoLoad = false;
     stopTimer();
     setVisible (false);
     if (host.closed)
@@ -224,6 +285,9 @@ void SearchOverlay::activate (bool keepOpen)
         return;
 
     const auto message = host.perform (*e, audition);
+
+    if (! keepOpen)
+        committed = true;
 
     if (keepOpen)
     {
@@ -613,6 +677,13 @@ void SearchOverlay::paintFooter (juce::Graphics& g)
         g.setColour (pal::accent);
         g.setFont (ui::font (11.0f, true));
         g.drawText (flash, r, juce::Justification::centredLeft, true);
+    }
+    else if (autoLoad && e != nullptr && e->kind == Kind::waveform)
+    {
+        g.setColour (pal::text);
+        g.setFont (ui::font (11.0f));
+        g.drawText ("Up / Down loads and plays each wave     Enter keeps it     Esc puts the old one back",
+                    r, juce::Justification::centredLeft, true);
     }
     else if (action.isNotEmpty())
     {

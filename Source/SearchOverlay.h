@@ -33,6 +33,11 @@ public:
 
     void open();
     void close();
+
+    /** Open straight onto the waveform list with `currentWave` selected (0 = none). While it is
+        open, moving the selection loads each wave onto the selected pad / tone and plays it.
+        Enter keeps the wave; Esc puts the original one back. */
+    void openOnWaveforms (int currentWave);
     bool isOpen() const { return isVisible(); }
 
     void paint (juce::Graphics&) override;
@@ -52,7 +57,7 @@ private:
     int  getNumRows() override { return (int) shown.size(); }
     void paintListBoxItem (int row, juce::Graphics&, int w, int h, bool selected) override;
     void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override;
-    void selectedRowsChanged (int) override { repaint(); }
+    void selectedRowsChanged (int) override;
 
     void timerCallback() override;
 
@@ -82,6 +87,11 @@ private:
     int category = 0;                           // 0 = All, 1.. = Kind + 1
     int hoverRow = -1, hoverCategory = -1;
     bool audition = true;
+
+    // openOnWaveforms(): load-as-you-browse
+    bool autoLoad = false, committed = false, autoChanged = false;
+    int  originalWave = 0;
+    int  loadToken = 0;
 
     juce::String flash;                         // result of the last Shift+Enter
 

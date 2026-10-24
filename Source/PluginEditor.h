@@ -4,6 +4,10 @@
 #include "PluginProcessor.h"
 #include "UiKit.h"
 #include "Pages.h"
+#include "SearchOverlay.h"
+#include "MasterPage.h"
+#include "CompEqPage.h"
+#include "PartMixerPage.h"
 //==============================================================================
 /** One row: name on the left, control on the right. Continuous parameters get a
     slider, enumerated ones a combo box, driven entirely by the address map. */
@@ -130,6 +134,53 @@ private:
 };
 
 //==============================================================================
+/** On-screen keyboard that numbers the 16 keys the MC-909's pads play (Rhythm Tone Key #59..#74),
+    so "pad 5" on the unit and the key you click here are obviously the same thing. */
+class PadKeyboard : public juce::MidiKeyboardComponent
+{
+public:
+    static constexpr int kFirstPadNote = 59, kNumPads = 16;
+
+    PadKeyboard (juce::MidiKeyboardState& state, Orientation o) : juce::MidiKeyboardComponent (state, o) {}
+
+    static bool isPadNote (int note) { return note >= kFirstPadNote && note < kFirstPadNote + kNumPads; }
+
+protected:
+    void drawWhiteNote (int note, juce::Graphics& g, juce::Rectangle<float> area, bool isDown, bool isOver,
+                        juce::Colour line, juce::Colour text) override
+    {
+        // A "C4" label and a pad number in the same spot would just fight, so the number wins.
+        juce::MidiKeyboardComponent::drawWhiteNote (note, g, area, isDown, isOver, line,
+                                                    isPadNote (note) ? juce::Colours::transparentBlack : text);
+        if (isPadNote (note))
+            badge (g, area, note, 5.0f);
+    }
+
+    void drawBlackNote (int note, juce::Graphics& g, juce::Rectangle<float> area, bool isDown, bool isOver,
+                        juce::Colour fill) override
+    {
+        juce::MidiKeyboardComponent::drawBlackNote (note, g, area, isDown, isOver, fill);
+        if (isPadNote (note))
+            badge (g, area, note, 4.0f);
+    }
+
+private:
+    static void badge (juce::Graphics& g, juce::Rectangle<float> keyArea, int note, float bottomGap)
+    {
+        const float d = juce::jmin (17.0f, keyArea.getWidth() - 3.0f);
+        if (d < 8.0f)
+            return;
+
+        const auto r = juce::Rectangle<float> (d, d).withCentre ({ keyArea.getCentreX(), keyArea.getBottom() - bottomGap - d * 0.5f });
+        g.setColour (juce::Colour (0xffff8a3d));
+        g.fillEllipse (r);
+        g.setColour (juce::Colour (0xff17191e));
+        g.setFont (juce::Font (juce::FontOptions (d * 0.66f, juce::Font::bold)));
+        g.drawText (juce::String (note - kFirstPadNote + 1), r.toNearestInt(), juce::Justification::centred, false);
+    }
+};
+
+//==============================================================================
 class MC909EditorComponent : public juce::AudioProcessorEditor,
                              private MC909EditorProcessor::EditListener,
                              private juce::MidiKeyboardState::Listener,
@@ -141,8 +192,9 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
-    static constexpr int kBaseW = 1120, kBaseH = 824;
+    static constexpr int kBaseW = 1300, kBaseH = 824;
 
 private:
     void paintContent (juce::Graphics&);
@@ -178,6 +230,7 @@ private:
 
     juce::ComboBox midiOutBox, midiInBox, deviceIdBox, partBox;
     juce::TextButton toneButtons[4];
+    juce::TextButton searchButton { "Search..." };
     juce::TextButton detectButton { "Detect" },
                      getButton    { "Get from MC-909" },
                      sendButton   { "Send to MC-909" };
@@ -193,6 +246,12 @@ private:
 
     juce::Label channelLabel;
 
+    // What the search last put on each part ("Preset A 001  Trance Chord"), shown right away
+    // rather than waiting for the unit to answer a Get. The hardware's own name is in the Patch box.
+    juce::Label loadedLabel;
+    juce::String loadedText[16];
+    void setLoaded (int part, const juce::String& text);
+
     // Keys that light up for notes coming from the host (MIDI tracks, MPK) or the unit.
     juce::ToggleButton thruButton { "Thru to 909" };
     bool shownKeys[128] {};
@@ -207,8 +266,20 @@ private:
     void teachModeChanged();
     void helpModeChanged();
 
+    // Browser over every waveform / patch / kit / pattern in the MC-909 patch list.
+    std::unique_ptr<SearchOverlay> searchOverlay;
+    void openSearch();
+    void browseWaves();
+    bool rhythmTabActive() const;
+    juce::String searchActionText (const mc909search::Entry&) const;
+    juce::String performSearchAction (const mc909search::Entry&, bool audition);
+    void auditionSoon (int note, int delayMs);
+    void flashStatus (const juce::String&);
+    juce::String statusFlash;
+    juce::uint32 statusFlashUntil = 0;
+
     juce::MidiKeyboardState keyboardState;
-    juce::MidiKeyboardComponent keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
+    PadKeyboard keyboard { keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard };
 
     bool needsRefresh = false;
     bool deviceSeen = false;

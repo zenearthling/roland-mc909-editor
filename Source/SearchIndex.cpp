@@ -325,4 +325,22 @@ std::vector<Range> Searcher::highlightExtra (int entryIndex, int segment, const 
     return mergeRanges (std::move (r));
 }
 
+const char* waveformName (int number)
+{
+    static const std::vector<const char*> names = []
+    {
+        std::vector<const char*> v;
+        for (int i = 0; i < kNumEntries; ++i)
+            if (kEntries[i].kind == Kind::waveform && kEntries[i].number >= 0)
+            {
+                if ((int) v.size() <= kEntries[i].number)
+                    v.resize ((size_t) kEntries[i].number + 1, nullptr);
+                v[(size_t) kEntries[i].number] = kEntries[i].name;
+            }
+        return v;
+    }();
+
+    return (number >= 0 && number < (int) names.size()) ? names[(size_t) number] : nullptr;
+}
+
 } // namespace mc909search

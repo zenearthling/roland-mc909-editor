@@ -44,6 +44,9 @@ struct Entry
 extern const Entry kEntries[];
 extern const int   kNumEntries;
 
+/** Name of internal waveform `number` (1-693), or nullptr when there is none. */
+const char* waveformName (int number);
+
 struct Hit
 {
     int index = 0;        ///< into kEntries

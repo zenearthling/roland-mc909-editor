@@ -1,6 +1,23 @@
 #pragma once
 #include "UiKit.h"
 
+/** Name of the selected wave and a button that opens the waveform browser. Works for a
+    patch tone ("tone.") and a rhythm pad tone ("rn.t."). */
+class WaveBar : public ui::ParamControl
+{
+public:
+    WaveBar (MC909EditorProcessor&, const juce::String& rootPrefix);
+    void resized() override;
+    void refresh() override;
+
+    std::function<void()> onBrowse;
+
+private:
+    juce::String root;
+    juce::Label nameLabel;
+    juce::TextButton browse { "Browse..." };
+};
+
 /** Main sound page: wave, pitch, filter and amp cards on top, the three
     envelopes underneath. */
 class TonePage : public ui::PageBase
@@ -14,6 +31,7 @@ private:
     ui::ParamNumber *waveGid, *waveL, *waveR;
     ui::ParamToggle *fxmSwitch;
     ui::ParamKnob   *fxmDepth;
+    WaveBar         *waveBar;
 
     ui::ParamKnob *coarse, *fine, *rndPitch, *pitchKf;
 
@@ -124,6 +142,8 @@ private:
     juce::String unitName[3] { "MFX 1", "MFX 2", "Reverb" };
 
     ui::ParamToggle *sw[4];
+    juce::TextButton probeBtn[3];
+    void probe (int unit);
 
     struct Unit
     {
@@ -200,6 +220,7 @@ private:
     ui::ParamToggle *toneSw, *fxmSwitch, *rndPanSw, *altPanSw;
     ui::ParamChoice *waveGroup, *waveGain, *fxmColor;
     ui::ParamNumber *waveGid, *waveL, *waveR;
+    WaveBar         *waveBar;
     ui::ParamKnob   *fxmDepth, *wCoarse, *wFine, *wPan, *wLevel, *velLo, *velHi, *fadeLo, *fadeHi;
 
     // pad-wide
