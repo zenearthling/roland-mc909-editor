@@ -273,6 +273,15 @@ private:
     bool rhythmTabActive() const;
     juce::String searchActionText (const mc909search::Entry&) const;
     juce::String performSearchAction (const mc909search::Entry&, bool audition);
+
+    // USER / CARD patches: snd909.svd files the user pointed the search at.
+    // The files and their search entries are shared by every editor instance in the process.
+    std::unique_ptr<juce::FileChooser> svdChooser;
+    void chooseSvd (mc909search::Kind);
+    bool loadSvd (mc909search::Kind, const juce::File&, juce::String* error = nullptr);
+    void rebuildSvdEntries (mc909search::Kind);
+    juce::String svdInfo (mc909search::Kind) const;
+    static juce::PropertiesFile::Options svdSettingsOptions();
     void auditionSoon (int note, int delayMs);
     void flashStatus (const juce::String&);
     juce::String statusFlash;

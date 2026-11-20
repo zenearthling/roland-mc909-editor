@@ -34,6 +34,8 @@ set(MC909_SOURCES
     Source/AudioAnalyser.cpp
     Source/FxData.cpp
     Source/SearchIndex.cpp
+    Source/SvdFile.cpp
+    Source/SvdSearch.cpp
     Source/SearchData.cpp
     Source/SearchOverlay.cpp
 )

@@ -1,5 +1,19 @@
 #include "PluginEditor.h"
 #include "Help.h"
+#include "SvdSearch.h"
+#include <cstdio>
+
+namespace
+{
+    struct SvdSourceData { svd::File file; juce::String path; };
+
+    SvdSourceData& svdSource (mc909search::Kind k)
+    {
+        static SvdSourceData data[2];
+        return data[k == mc909search::Kind::userPatch ? 0 : 1];
+    }
+}
+
 
 using namespace mc909;
 
@@ -165,7 +179,21 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     searchHost.describeAction = [this] (const mc909search::Entry& e) { return searchActionText (e); };
     searchHost.perform        = [this] (const mc909search::Entry& e, bool audition) { return performSearchAction (e, audition); };
     searchHost.closed         = [this] { grabKeyboardFocus(); };
+    searchHost.chooseSource   = [this] (mc909search::Kind k) { chooseSvd (k); };
+    searchHost.sourceInfo     = [this] (mc909search::Kind k) { return svdInfo (k); };
     searchOverlay = std::make_unique<SearchOverlay> (std::move (searchHost));
+
+    // Reload the USER / CARD files used last time (once per process; instances share them).
+    {
+        juce::PropertiesFile props (svdSettingsOptions());
+        for (auto k : { mc909search::Kind::userPatch, mc909search::Kind::cardPatch })
+        {
+            const juce::File f (props.getValue (k == mc909search::Kind::userPatch ? "svdUser" : "svdCard"));
+            if (f.existsAsFile() && svdSource (k).path.isEmpty())
+                loadSvd (k, f);
+        }
+        searchOverlay->refreshSources();
+    }
     content.addChildComponent (*searchOverlay);
 
     searchButton.setTooltip ("Search every waveform, patch, rhythm kit and pattern in the MC-909  (Ctrl/Cmd+F)");
@@ -448,6 +476,103 @@ void MC909EditorComponent::auditionSoon (int note, int delayMs)
     });
 }
 
+//==============================================================================
+// USER / CARD patches in the search: snd909.svd files, read with SvdFile.
+juce::PropertiesFile::Options MC909EditorComponent::svdSettingsOptions()
+{
+    juce::PropertiesFile::Options o;
+    o.applicationName = "Sporecode MC-909 Editor";
+    o.filenameSuffix = ".settings";
+    o.folderName = "Sporecode";
+    o.osxLibrarySubFolder = "Application Support";
+    return o;
+}
+
+void MC909EditorComponent::rebuildSvdEntries (mc909search::Kind k)
+{
+    const auto& src = svdSource (k);
+    std::vector<mc909search::DynamicEntry> list;
+    if (src.file.isLoaded())
+        for (int slot = 1; slot <= svd::kSlotCount; ++slot)
+            if (src.file.name (slot) != "INIT PATCH")           // empty slots would bury every search
+                list.push_back (svd::makeSearchEntry (src.file, slot, k == mc909search::Kind::userPatch ? "USER" : "CARD"));
+
+    mc909search::setDynamicEntries (k, std::move (list));
+}
+
+bool MC909EditorComponent::loadSvd (mc909search::Kind k, const juce::File& file, juce::String* error)
+{
+    juce::MemoryBlock mb;
+    if (! file.loadFileAsData (mb))
+    {
+        if (error != nullptr) *error = "could not read " + file.getFullPathName();
+        return false;
+    }
+
+    std::string why;
+    auto& src = svdSource (k);
+    svd::File fresh;
+    if (! fresh.load (static_cast<const uint8_t*> (mb.getData()), mb.getSize(), &why))
+    {
+        if (error != nullptr) *error = juce::String (why);
+        return false;
+    }
+
+    src.file = std::move (fresh);
+    src.path = file.getFullPathName();
+    rebuildSvdEntries (k);
+    return true;
+}
+
+void MC909EditorComponent::chooseSvd (mc909search::Kind k)
+{
+    juce::PropertiesFile props (svdSettingsOptions());
+    juce::File start (props.getValue ("svdLastDir"));
+    if (! start.isDirectory())
+        start = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+
+    const bool user = (k == mc909search::Kind::userPatch);
+    svdChooser = std::make_unique<juce::FileChooser> (user ? "Choose the USER patch file (snd909.svd)"
+                                                           : "Choose the CARD patch file (snd909.svd)",
+                                                     start, "*.svd");
+
+    juce::Component::SafePointer<MC909EditorComponent> safe (this);
+    svdChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                             [safe, k, user] (const juce::FileChooser& fc)
+    {
+        const auto f = fc.getResult();
+        if (safe == nullptr || ! f.existsAsFile())
+            return;
+
+        juce::String error;
+        if (safe->loadSvd (k, f, &error))
+        {
+            juce::PropertiesFile props (svdSettingsOptions());
+            props.setValue (user ? "svdUser" : "svdCard", f.getFullPathName());
+            props.setValue ("svdLastDir", f.getParentDirectory().getFullPathName());
+            props.saveIfNeeded();
+            safe->flashStatus ("Loaded " + f.getFileName() + " as " + (user ? "USER" : "CARD") + " patches");
+        }
+        else
+            safe->flashStatus ("Could not load " + f.getFileName() + ": " + error);
+
+        safe->searchOverlay->refreshSources();
+    });
+}
+
+juce::String MC909EditorComponent::svdInfo (mc909search::Kind k) const
+{
+    const auto& src = svdSource (k);
+    if (! src.file.isLoaded())
+        return {};
+
+    int n = 0;
+    for (int slot = 1; slot <= svd::kSlotCount; ++slot)
+        if (src.file.name (slot) != "INIT PATCH")
+            ++n;
+    return juce::File (src.path).getFileName() + ", " + juce::String (n) + " patches";
+}
+
 juce::String MC909EditorComponent::searchActionText (const mc909search::Entry& e) const
 {
     using mc909search::Kind;
@@ -463,6 +588,9 @@ juce::String MC909EditorComponent::searchActionText (const mc909search::Entry& e
                        + juce::MidiMessage::getMidiNoteName (59 + proc.getSelectedPad(), true, true, 4) + ", " + tone;
             return "Load waveform " + juce::String (e.number) + " into Part " + juce::String (part) + ", " + tone;
         }
+        case Kind::userPatch:
+        case Kind::cardPatch:
+            return "Load " + juce::String (e.where) + " into Part " + juce::String (part) + " (tones, TMT, common)";
         case Kind::patch:
             return "Select " + juce::String (e.where) + " on Part " + juce::String (part);
         case Kind::rhythmKit:
@@ -522,6 +650,24 @@ juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry
             setLoaded (part, "Now loaded:  " + juce::String (e.where) + "  " + juce::String (juce::CharPointer_UTF8 (e.name)));
             if (audition)
                 auditionSoon (60, 600);
+            break;
+        }
+
+        case Kind::userPatch:
+        case Kind::cardPatch:
+        {
+            const auto& src = svdSource (e.kind);
+            if (! src.file.isLoaded())
+            {
+                done = "No patch file loaded";
+                break;
+            }
+
+            proc.loadPatchFromSvd (src.file.blocks (e.number));
+            done = "Loaded " + juce::String (juce::CharPointer_UTF8 (e.name)) + " (" + juce::String (e.where) + ") into Part " + juce::String (part + 1);
+            setLoaded (part, "Now loaded:  " + juce::String (e.where) + "  " + juce::String (juce::CharPointer_UTF8 (e.name)));
+            if (audition)
+                auditionSoon (60, 400);
             break;
         }
 

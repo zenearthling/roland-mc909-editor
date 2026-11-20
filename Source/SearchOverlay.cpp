@@ -34,6 +34,8 @@ namespace pal
             case Kind::patternSet: return juce::Colour (0xffb98cff);
             case Kind::rpsPattern: return juce::Colour (0xffffd84d);
             case Kind::rpsSet:     return juce::Colour (0xff9aa0a8);
+            case Kind::userPatch:  return juce::Colour (0xff4fe0a0);
+            case Kind::cardPatch:  return juce::Colour (0xffe8d44f);
         }
         return textDim;
     }
@@ -44,9 +46,9 @@ namespace
     constexpr int kRowH = 26, kCatH = 28, kHeaderH = 54, kFooterH = 42;
     constexpr int kSidebarW = 176, kInfoW = 262;
 
-    const Searcher& sharedSearcher()
+    Searcher& sharedSearcher()
     {
-        static const Searcher s;      // ~1.5 ms to build; lives for the process
+        static Searcher s;      // ~1.5 ms to build; lives for the process
         return s;
     }
 
@@ -161,7 +163,7 @@ void SearchOverlay::openOnWaveforms (int currentWave)
 
     if (currentWave > 0)
         for (int row = 0; row < (int) shown.size(); ++row)
-            if (kEntries[shown[(size_t) row].index].number == currentWave)
+            if (entryAt (shown[(size_t) row].index).number == currentWave)
             {
                 results.selectRow (row);
                 results.scrollToEnsureRowIsOnscreen (row);
@@ -234,12 +236,12 @@ void SearchOverlay::runSearch()
 
     for (auto& c : counts) c = 0;
     for (const auto& h : all)
-        ++counts[(int) kEntries[h.index].kind];
+        ++counts[(int) entryAt (h.index).kind];
     totalCount = (int) all.size();
 
     shown.clear();
     for (const auto& h : all)
-        if (category == 0 || (int) kEntries[h.index].kind == category - 1)
+        if (category == 0 || (int) entryAt (h.index).kind == category - 1)
             shown.push_back (h);
 
     // With nothing to list, hide the list so paint() can say so: a child component
@@ -275,7 +277,7 @@ void SearchOverlay::moveSelection (int delta)
 const Entry* SearchOverlay::selectedEntry() const
 {
     const int row = results.getSelectedRow();
-    return juce::isPositiveAndBelow (row, (int) shown.size()) ? &kEntries[shown[(size_t) row].index] : nullptr;
+    return juce::isPositiveAndBelow (row, (int) shown.size()) ? &entryAt (shown[(size_t) row].index) : nullptr;
 }
 
 void SearchOverlay::activate (bool keepOpen)
@@ -363,6 +365,18 @@ void SearchOverlay::resized()
     auditionBox = footer.reduced (14, 0).removeFromRight (96).withSizeKeepingCentre (96, 22);
 }
 
+juce::Rectangle<int> SearchOverlay::sourceButton (int i) const
+{
+    const int top = sidebar.getY() + 34 + (kNumKinds + 1) * kCatH + 12;
+    return { sidebar.getX() + 16, top + i * 46, sidebar.getWidth() - 32, 24 };
+}
+
+void SearchOverlay::refreshSources()
+{
+    searcher.refresh();
+    runSearch();
+}
+
 juce::Rectangle<int> SearchOverlay::categoryRow (int c) const
 {
     return { sidebar.getX(), sidebar.getY() + 34 + c * kCatH, sidebar.getWidth(), kCatH };
@@ -424,6 +438,14 @@ void SearchOverlay::mouseDown (const juce::MouseEvent& e)
             return;
         }
 
+    for (int i = 0; i < 2; ++i)
+        if (sourceButton (i).contains (p))
+        {
+            if (host.chooseSource)
+                host.chooseSource (i == 0 ? Kind::userPatch : Kind::cardPatch);
+            return;
+        }
+
     if (auditionBox.contains (p))
     {
         audition = ! audition;
@@ -481,8 +503,11 @@ void SearchOverlay::paint (juce::Graphics& g)
     {
         g.setColour (pal::textDim);
         g.setFont (ui::font (12.0f));
-        g.drawFittedText (query.empty() ? juce::String ("Nothing here") : "No results for \"" + s2j (query) + "\"",
-                          listArea.reduced (20), juce::Justification::centred, 2);
+        juce::String msg = query.empty() ? juce::String ("Nothing here") : "No results for \"" + s2j (query) + "\"";
+        if (query.empty() && (category - 1 == (int) Kind::userPatch || category - 1 == (int) Kind::cardPatch))
+            msg = juce::String ("No ") + (category - 1 == (int) Kind::userPatch ? "USER" : "CARD")
+                + " patches loaded yet.\nUse the button on the left and pick a snd909.svd,\nfrom the unit's drive in USB mode or from a backup.";
+        g.drawFittedText (msg, listArea.reduced (20), juce::Justification::centred, 4);
     }
 
     g.setColour (pal::panelEdge);
@@ -533,6 +558,30 @@ void SearchOverlay::paintSidebar (juce::Graphics& g)
         g.drawText (juce::String (n), numArea, juce::Justification::centredRight);
     }
 
+    for (int i = 0; i < 2; ++i)
+    {
+        const auto b = sourceButton (i);
+        const bool hot = b.contains (getMouseXYRelative());
+        g.setColour (hot ? pal::hover.brighter (0.1f) : pal::field);
+        g.fillRect (b);
+        g.setColour (pal::fieldEdge);
+        g.drawRect (b, 1);
+        g.setColour (hot ? pal::text : pal::textDim.brighter (0.2f));
+        g.setFont (ui::font (10.5f));
+        g.drawText (i == 0 ? "Load USER file..." : "Load CARD file...", b, juce::Justification::centred);
+
+        if (host.sourceInfo)
+        {
+            const auto info = host.sourceInfo (i == 0 ? Kind::userPatch : Kind::cardPatch);
+            if (info.isNotEmpty())
+            {
+                g.setColour (pal::textFaint);
+                g.setFont (ui::font (9.0f));
+                g.drawFittedText (info, b.translated (0, b.getHeight() + 1).withHeight (14), juce::Justification::centred, 1);
+            }
+        }
+    }
+
     g.setColour (pal::textFaint);
     g.setFont (ui::font (9.5f));
     g.drawFittedText ("Tab switches category", sidebar.withTrimmedTop (sidebar.getHeight() - 36).reduced (16, 6),
@@ -545,7 +594,7 @@ void SearchOverlay::paintListBoxItem (int row, juce::Graphics& g, int w, int h, 
         return;
 
     const auto& hit = shown[(size_t) row];
-    const auto& e = kEntries[hit.index];
+    const auto& e = entryAt (hit.index);
     const juce::Rectangle<int> area (0, 0, w, h);
 
     if (selected)

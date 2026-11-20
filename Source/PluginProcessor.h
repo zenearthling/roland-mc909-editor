@@ -1,4 +1,5 @@
 #pragma once
+#include "SvdFile.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "MC909Map.h"
 #include "MidiHub.h"
@@ -74,6 +75,11 @@ public:
 
     /** Push the whole local edit buffer back to the device. */
     void sendAll();
+
+    /** Replace the selected part's patch (Patch Common, TMT and the four tones) with one read from a
+        snd909.svd, and send it to the unit. The patch's own effect settings are not in the file's
+        decoded part, so the part's current effects stay as they are. */
+    void loadPatchFromSvd (const svd::PatchBlocks&);
 
     //==============================================================================
     // Note activity, for the keyboard display. Fed by MIDI the host routes to the plugin

@@ -24,6 +24,13 @@ public:
         /** Do it. `audition` asks for a test note afterwards. Returns a short status line. */
         std::function<juce::String (const mc909search::Entry&, bool audition)> perform;
 
+        /** The USER / CARD "Load ... file" button was pressed: let the user pick a snd909.svd, then
+            call SearchOverlay::refreshSources(). */
+        std::function<void (mc909search::Kind)> chooseSource;
+
+        /** One line under that button ("snd909.svd, 37 patches"), or empty. */
+        std::function<juce::String (mc909search::Kind)> sourceInfo;
+
         /** The overlay has hidden itself; give keyboard focus back. */
         std::function<void()> closed;
     };
@@ -39,6 +46,9 @@ public:
         Enter keeps the wave; Esc puts the original one back. */
     void openOnWaveforms (int currentWave);
     bool isOpen() const { return isVisible(); }
+
+    /** USER / CARD patch lists changed: rebuild the search index and redo the current query. */
+    void refreshSources();
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -67,13 +77,14 @@ private:
     void activate (bool keepOpen);
     const mc909search::Entry* selectedEntry() const;
     juce::Rectangle<int> categoryRow (int category) const;
+    juce::Rectangle<int> sourceButton (int index) const;
 
     void paintSidebar (juce::Graphics&);
     void paintInfo (juce::Graphics&);
     void paintFooter (juce::Graphics&);
 
     Host host;
-    const mc909search::Searcher& searcher;
+    mc909search::Searcher& searcher;
 
     juce::TextEditor searchField;
     juce::ListBox    results { {}, this };

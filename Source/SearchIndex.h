@@ -19,10 +19,12 @@ enum class Kind : uint8_t
     pattern,      ///< preset sequencer pattern
     patternSet,
     rpsPattern,   ///< RPS (realtime phrase sequence) pattern
-    rpsSet
+    rpsSet,
+    userPatch,    ///< a patch from a snd909.svd the user loaded (USER memory)
+    cardPatch     ///< a patch from a snd909.svd on the memory card
 };
 
-constexpr int kNumKinds = 7;
+constexpr int kNumKinds = 9;
 constexpr uint32_t kAllKinds = (1u << kNumKinds) - 1u;
 
 inline uint32_t kindBit (Kind k) { return 1u << (unsigned) k; }
@@ -44,6 +46,19 @@ struct Entry
 extern const Entry kEntries[];
 extern const int   kNumEntries;
 
+/** Entries that come from files the user loaded (USER / CARD patches). They follow the static
+    table: index kNumEntries + n. Strings are owned here, so Entry pointers stay valid until the
+    next setDynamicEntries(). Call Searcher::refresh() afterwards. */
+struct DynamicEntry
+{
+    std::string name, where, extra, detail;
+    int number = 0;     ///< slot 1-256
+};
+
+void setDynamicEntries (Kind userOrCard, std::vector<DynamicEntry> entries);
+int  totalEntries();
+const Entry& entryAt (int index);
+
 /** Name of internal waveform `number` (1-693), or nullptr when there is none. */
 const char* waveformName (int number);
 
@@ -60,6 +75,9 @@ class Searcher
 {
 public:
     Searcher();
+
+    /** Rebuild after setDynamicEntries(). */
+    void refresh();
 
     /** All entries matching every word of `query`, best first. An empty query
         returns everything in table order. Words match anywhere in the name,

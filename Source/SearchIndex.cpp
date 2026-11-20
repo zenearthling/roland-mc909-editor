@@ -1,4 +1,5 @@
 #include "SearchIndex.h"
+#include <memory>
 #include <algorithm>
 #include <bitset>
 #include <cctype>
@@ -17,6 +18,8 @@ const char* kindLabel (Kind k)
         case Kind::patternSet: return "Pattern Set";
         case Kind::rpsPattern: return "RPS Pattern";
         case Kind::rpsSet:     return "RPS Set";
+        case Kind::userPatch:  return "User Patch";
+        case Kind::cardPatch:  return "Card Patch";
     }
     return "";
 }
@@ -32,6 +35,8 @@ const char* kindLabelPlural (Kind k)
         case Kind::patternSet: return "Pattern Sets";
         case Kind::rpsPattern: return "RPS Patterns";
         case Kind::rpsSet:     return "RPS Sets";
+        case Kind::userPatch:  return "User";
+        case Kind::cardPatch:  return "Card";
     }
     return "";
 }
@@ -127,12 +132,55 @@ std::vector<std::string> Searcher::tokenise (const std::string& query)
     return out;
 }
 
-Searcher::Searcher()
+namespace
 {
-    cache.resize ((size_t) kNumEntries);
-    for (int i = 0; i < kNumEntries; ++i)
+    struct Dyn { DynamicEntry d; Entry e; };
+    std::vector<std::unique_ptr<Dyn>> g_dyn[2];     // user, card
+    std::vector<const Entry*> g_dynFlat;
+
+    void flatten()
     {
-        const auto& e = kEntries[i];
+        g_dynFlat.clear();
+        for (auto& list : g_dyn)
+            for (auto& x : list)
+                g_dynFlat.push_back (&x->e);
+    }
+}
+
+void setDynamicEntries (Kind k, std::vector<DynamicEntry> entries)
+{
+    if (k != Kind::userPatch && k != Kind::cardPatch)
+        return;
+
+    auto& list = g_dyn[k == Kind::userPatch ? 0 : 1];
+    list.clear();
+    for (auto& d : entries)
+    {
+        auto x = std::make_unique<Dyn>();
+        x->d = std::move (d);
+        x->e = Entry { k, x->d.name.c_str(), x->d.where.c_str(), x->d.extra.c_str(), x->d.detail.c_str(),
+                       x->d.number, 0 };
+        list.push_back (std::move (x));
+    }
+    flatten();
+}
+
+int totalEntries() { return kNumEntries + (int) g_dynFlat.size(); }
+
+const Entry& entryAt (int index)
+{
+    return index < kNumEntries ? kEntries[index] : *g_dynFlat[(size_t) (index - kNumEntries)];
+}
+
+Searcher::Searcher() { refresh(); }
+
+void Searcher::refresh()
+{
+    cache.clear();
+    cache.resize ((size_t) totalEntries());
+    for (int i = 0; i < totalEntries(); ++i)
+    {
+        const auto& e = entryAt (i);
         auto& c = cache[(size_t) i];
         c.lname = lower (e.name);
         for (char ch : c.lname)
@@ -152,13 +200,13 @@ std::vector<Hit> Searcher::search (const std::string& query) const
         tokens.resize (16);                 // masks below are 32-bit; nobody types more
 
     std::vector<Hit> hits;
-    hits.reserve ((size_t) kNumEntries);
+    hits.reserve ((size_t) totalEntries());
 
     std::string joined;
     for (auto& t : tokens)
         joined += (joined.empty() ? "" : " ") + t;
 
-    for (int i = 0; i < kNumEntries; ++i)
+    for (int i = 0; i < totalEntries(); ++i)
     {
         const auto& c = cache[(size_t) i];
         int total = 0;
@@ -270,7 +318,7 @@ static std::vector<Range> mergeRanges (std::vector<Range> r)
 std::vector<Range> Searcher::highlight (int entryIndex, const std::string& query) const
 {
     std::vector<Range> r;
-    if (entryIndex < 0 || entryIndex >= kNumEntries)
+    if (entryIndex < 0 || entryIndex >= totalEntries())
         return r;
 
     const auto& c = cache[(size_t) entryIndex];
@@ -300,16 +348,16 @@ std::vector<Range> Searcher::highlight (int entryIndex, const std::string& query
 
 std::string Searcher::extraSegment (int entryIndex, int segment) const
 {
-    if (entryIndex < 0 || entryIndex >= kNumEntries || segment < 0)
+    if (entryIndex < 0 || entryIndex >= totalEntries() || segment < 0)
         return {};
-    const auto segs = splitSegments (kEntries[entryIndex].extra);
+    const auto segs = splitSegments (entryAt (entryIndex).extra);
     return segment < (int) segs.size() ? segs[(size_t) segment] : std::string();
 }
 
 std::vector<Range> Searcher::highlightExtra (int entryIndex, int segment, const std::string& query) const
 {
     std::vector<Range> r;
-    if (entryIndex < 0 || entryIndex >= kNumEntries || segment < 0)
+    if (entryIndex < 0 || entryIndex >= totalEntries() || segment < 0)
         return r;
 
     const auto& c = cache[(size_t) entryIndex];

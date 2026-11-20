@@ -444,6 +444,43 @@ void MC909EditorProcessor::probePatchSizes()
         hub.send (roland::makeRQ1 (deviceId, roland::Address::fromLinear (base + 128u * 128u + page * 128u), 0x80), gapMs);
 }
 
+void MC909EditorProcessor::loadPatchFromSvd (const svd::PatchBlocks& pb)
+{
+    if (pb.common.size() != mc909::blockByteCount (Block::patchCommon)
+        || pb.tmt.size() != mc909::blockByteCount (Block::patchTMT))
+        return;
+
+    std::vector<juce::MidiMessage> out;
+    const int savedTone = selectedTone;
+
+    auto push = [&] (Block b, const std::vector<uint8_t>& bytes)
+    {
+        blockData (b) = bytes;                                   // local mirror first
+        const auto base = blockAddress (b, selectedPart, selectedTone, selectedPad);
+        constexpr size_t chunk = 128;                            // as in sendAll()
+        for (size_t pos = 0; pos < bytes.size();)
+        {
+            const size_t n = juce::jmin (chunk, bytes.size() - pos);
+            out.push_back (roland::makeDT1 (deviceId, base + (uint32_t) pos, bytes.data() + pos, n));
+            pos += n;
+        }
+    };
+
+    push (Block::patchCommon, pb.common);
+    push (Block::patchTMT, pb.tmt);
+    for (int t = 0; t < 4; ++t)
+    {
+        selectedTone = t;
+        push (Block::patchTone, pb.tone[(size_t) t]);
+    }
+    selectedTone = savedTone;
+
+    hub.setSendInterval (20);
+    hub.sendAll (out);
+
+    editListeners.call ([] (EditListener& l) { l.modelChanged(); });
+}
+
 void MC909EditorProcessor::sendAll()
 {
     std::vector<juce::MidiMessage> out;
