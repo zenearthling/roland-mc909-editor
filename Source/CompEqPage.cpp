@@ -321,6 +321,69 @@ void CompEqGraph::mouseDrag (const juce::MouseEvent& e)
         apply (drag, e.position);
 }
 
+void CompEqGraph::tick()
+{
+    // instant rise, slow fall, so peaks are readable at 30 fps
+    for (int k = 0; k < AudioAnalyser::kBins; ++k)
+    {
+        const float raw = proc.analyser.spectrumDb (k);
+        auto& shown = shownSpectrum[(size_t) k];
+        shown = raw > shown ? raw : juce::jmax (raw, shown - 1.2f);
+    }
+    repaint();
+}
+
+void CompEqGraph::paintSpectrum (juce::Graphics& g, juce::Rectangle<float> p) const
+{
+    const double sr = proc.analyser.sampleRate();
+    constexpr int kN = AudioAnalyser::kFftSize, kBins = AudioAnalyser::kBins;
+    if (sr <= 0.0 || ! proc.analyser.hasSignal())
+        return;
+
+    juce::Path line;
+    bool started = false;
+    for (float x = p.getX(); x <= p.getRight() + 0.5f; x += 2.0f)
+    {
+        const double hz0 = hzForX (x), hz1 = hzForX (juce::jmin (x + 2.0f, p.getRight()));
+        const double b0 = hz0 * kN / sr, b1 = hz1 * kN / sr;
+
+        float db;
+        if (b1 - b0 < 1.0)                       // low end: fewer than one FFT bin per pixel, so interpolate
+        {
+            const double bc = 0.5 * (b0 + b1);
+            const int i = juce::jlimit (0, kBins - 2, (int) std::floor (bc));
+            const float f = (float) juce::jlimit (0.0, 1.0, bc - (double) i);
+            db = shownSpectrum[(size_t) i] * (1.0f - f) + shownSpectrum[(size_t) (i + 1)] * f;
+        }
+        else                                     // high end: many bins per pixel, show the loudest
+        {
+            const int i0 = juce::jlimit (0, kBins - 1, (int) std::floor (b0));
+            const int i1 = juce::jlimit (0, kBins - 1, (int) std::ceil (b1));
+            db = AudioAnalyser::kFloorDb;
+            for (int i = i0; i <= i1; ++i)
+                db = juce::jmax (db, shownSpectrum[(size_t) i]);
+        }
+
+        const double tilt = 4.5 * std::log2 (std::sqrt (hz0 * hz1) / 1000.0);   // 4.5 dB / octave, like analysers
+        const float frac = juce::jlimit (0.0f, 1.0f, (db + (float) tilt + 100.0f) / 100.0f);
+        const float y = p.getBottom() - frac * p.getHeight();
+
+        if (! started) { line.startNewSubPath (x, y); started = true; }
+        else           line.lineTo (x, y);
+    }
+
+    juce::Path fill (line);
+    fill.lineTo (p.getRight(), p.getBottom());
+    fill.lineTo (p.getX(), p.getBottom());
+    fill.closeSubPath();
+
+    g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.14f), 0.0f, p.getY(),
+                                             juce::Colours::white.withAlpha (0.02f), 0.0f, p.getBottom(), false));
+    g.fillPath (fill);
+    g.setColour (juce::Colours::white.withAlpha (0.30f));
+    g.strokePath (line, juce::PathStrokeType (1.1f));
+}
+
 void CompEqGraph::paint (juce::Graphics& g)
 {
     const auto b = getLocalBounds().toFloat();
@@ -350,6 +413,8 @@ void CompEqGraph::paint (juce::Graphics& g)
         g.drawText (hz >= 1000.0 ? juce::String ((int) (hz / 1000.0)) + "k" : juce::String ((int) hz),
                     juce::Rectangle<float> (x - 20.0f, p.getBottom() + 4.0f, 40.0f, 14.0f).toNearestInt(), juce::Justification::centred);
     }
+
+    paintSpectrum (g, p);
 
     juce::Path line;
     const int steps = juce::jmax (16, (int) p.getWidth() / 2);
@@ -397,6 +462,100 @@ void CompEqGraph::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+namespace
+{
+    constexpr float kMeterFloor = -60.0f;
+    float linToDb (float lin) { return lin < 1.0e-6f ? AudioAnalyser::kFloorDb : 20.0f * std::log10 (lin); }
+    float meterFrac (float db) { return juce::jlimit (0.0f, 1.0f, (db - kMeterFloor) / -kMeterFloor); }
+}
+
+CompLevelMeter::CompLevelMeter (MC909EditorProcessor& p) : proc (p)
+{
+    setInterceptsMouseClicks (false, false);
+}
+
+void CompLevelMeter::tick()
+{
+    haveSignal = proc.analyser.hasSignal();
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const float db = linToDb (proc.analyser.takePeak (ch));
+        peakDb[ch] = db >= peakDb[ch] ? db : juce::jmax (db, peakDb[ch] - 1.6f);
+
+        if (db >= holdDb[ch])        { holdDb[ch] = db; holdTicks[ch] = 40; }
+        else if (holdTicks[ch] > 0)  --holdTicks[ch];
+        else                         holdDb[ch] = juce::jmax (db, holdDb[ch] - 1.0f);
+    }
+    repaint();
+}
+
+void CompLevelMeter::paint (juce::Graphics& g)
+{
+    const auto b = getLocalBounds().toFloat();
+    g.setColour (col::well);
+    g.fillRoundedRectangle (b, 6.0f);
+
+    g.setColour (col::textDim);
+    g.setFont (font (10.0f, true).withExtraKerningFactor (0.14f));
+    g.drawText ("RETURN LEVEL", juce::Rectangle<float> (b.getX() + 10.0f, b.getY() + 5.0f, 120.0f, 13.0f).toNearestInt(),
+                juce::Justification::centredLeft);
+
+    const float barX = b.getX() + 28.0f, barW = b.getWidth() - 28.0f - 46.0f;
+    const juce::Colour hi (0xffff5a5a);
+
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const juce::Rectangle<float> bar (barX, b.getY() + 22.0f + (float) ch * 18.0f, barW, 12.0f);
+        g.setColour (juce::Colour (0xff181b21));
+        g.fillRoundedRectangle (bar, 2.0f);
+
+        const float w = meterFrac (peakDb[ch]) * bar.getWidth();
+        if (w > 0.5f)
+        {
+            juce::ColourGradient grad (juce::Colour (0xff35e0c8), bar.getX(), 0.0f, hi, bar.getRight(), 0.0f, false);
+            grad.addColour (0.80, juce::Colour (0xff6af0a8));
+            g.setGradientFill (grad);
+            g.fillRoundedRectangle (bar.getX(), bar.getY(), w, bar.getHeight(), 2.0f);
+        }
+
+        if (holdDb[ch] > kMeterFloor)
+        {
+            const float x = bar.getX() + meterFrac (holdDb[ch]) * bar.getWidth();
+            g.setColour (holdDb[ch] >= -0.3f ? hi : juce::Colours::white.withAlpha (0.9f));
+            g.fillRect (x - 1.0f, bar.getY(), 2.0f, bar.getHeight());
+        }
+
+        g.setColour (col::textDim.withAlpha (0.8f));
+        g.setFont (font (9.5f, true));
+        g.drawText (ch == 0 ? "L" : "R", juce::Rectangle<float> (b.getX() + 8.0f, bar.getY(), 14.0f, bar.getHeight()).toNearestInt(),
+                    juce::Justification::centred);
+
+        g.setColour (holdDb[ch] >= -0.3f ? hi : col::textDim);
+        g.drawText (holdDb[ch] > kMeterFloor ? juce::String (holdDb[ch], 1) : juce::String ("-"),
+                    juce::Rectangle<float> (bar.getRight() + 3.0f, bar.getY(), 40.0f, bar.getHeight()).toNearestInt(),
+                    juce::Justification::centredLeft);
+    }
+
+    // scale under the bars
+    g.setFont (font (8.5f));
+    for (const int db : { -48, -36, -24, -12, -6, 0 })
+    {
+        const float x = barX + meterFrac ((float) db) * barW;
+        g.setColour (col::cardEdge.withAlpha (0.7f));
+        g.fillRect (x, b.getY() + 21.0f, 1.0f, 33.0f);
+        g.setColour (col::textDim.withAlpha (0.8f));
+        g.drawText (juce::String (db), juce::Rectangle<float> (x - 14.0f, b.getY() + 56.0f, 28.0f, 11.0f).toNearestInt(),
+                    juce::Justification::centred);
+    }
+
+    g.setColour (col::textDim.withAlpha (0.75f));
+    g.setFont (font (9.0f));
+    g.drawText (haveSignal ? "dBFS, whole mix, after the unit's compressor" : "no audio arriving: route the MC-909 through this track",
+                juce::Rectangle<float> (b.getX() + 10.0f, b.getBottom() - 15.0f, b.getWidth() - 14.0f, 12.0f).toNearestInt(),
+                juce::Justification::centredLeft);
+}
+
+//==============================================================================
 CompEqPage::CompEqPage (MC909EditorProcessor& p) : PageBase (p)
 {
     onOff = add<ParamToggle> ("fx.comp_sw", "Compressor");
@@ -421,6 +580,21 @@ CompEqPage::CompEqPage (MC909EditorProcessor& p) : PageBase (p)
     level   = add<ParamKnob>   ("comp.level", "Level");
     revSend = add<ParamKnob>   ("comp.rev_send", "Reverb Send");
     output  = add<ParamChoice> ("comp.output", "Output");
+
+    meter = std::make_unique<CompLevelMeter> (p);
+    addAndMakeVisible (*meter);
+}
+
+void CompEqPage::visibilityChanged()
+{
+    if (isShowing()) startTimerHz (30);
+    else             stopTimer();
+}
+
+void CompEqPage::timerCallback()
+{
+    eq->tick();
+    meter->tick();
 }
 
 void CompEqPage::resized()
@@ -477,6 +651,8 @@ void CompEqPage::resized()
         revSend->setBounds (inner.removeFromLeft (ParamKnob::cellWidth + 20).withHeight (ParamKnob::cellHeight));
         inner.removeFromLeft (12);
         output->setBounds  (inner.removeFromLeft (170).withTrimmedTop (20).withHeight (42));
+        inner.removeFromLeft (24);
+        meter->setBounds   (inner.removeFromLeft (290).withHeight (86));
     }
 }
 

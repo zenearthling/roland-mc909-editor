@@ -1,5 +1,7 @@
 #pragma once
 #include "UiKit.h"
+#include <array>
+#include <memory>
 
 /** COMP/EQ tab: the unit's single compressor plus its two-band shelving EQ.
 
@@ -65,10 +67,15 @@ public:
         return p.x < getWidth() / 2 ? &lowGain : &highGain;
     }
 
+    /** Called ~30 times a second while the tab is showing: pulls the spectrum and repaints. */
+    void tick();
+
     /** Level in dB of a shelf at `hz` (RBJ cookbook shelf, slope 1). */
     static double shelfDb (double hz, double cornerHz, double gainDb, bool lowShelf);
 
 private:
+    void paintSpectrum (juce::Graphics&, juce::Rectangle<float> plotArea) const;
+    std::array<float, AudioAnalyser::kBins> shownSpectrum {};
     juce::Rectangle<float> plot() const;
     float xForHz (double hz) const;
     double hzForX (float x) const;
@@ -85,14 +92,34 @@ private:
     int hover = -1, drag = -1;
 };
 
-class CompEqPage : public ui::PageBase
+/** Left / right peak level of the audio that reaches the plugin, with peak hold. This is the MC-909's
+    return AFTER its own compressor and for the whole mix, the same feed the MASTER tab shows. */
+class CompLevelMeter : public juce::Component
+{
+public:
+    explicit CompLevelMeter (MC909EditorProcessor&);
+    void tick();
+    void paint (juce::Graphics&) override;
+
+private:
+    MC909EditorProcessor& proc;
+    float peakDb[2] { AudioAnalyser::kFloorDb, AudioAnalyser::kFloorDb };
+    float holdDb[2] { AudioAnalyser::kFloorDb, AudioAnalyser::kFloorDb };
+    int   holdTicks[2] {};
+    bool  haveSignal = false;
+};
+
+class CompEqPage : public ui::PageBase, private juce::Timer
 {
 public:
     explicit CompEqPage (MC909EditorProcessor&);
     void resized() override;
     void paint (juce::Graphics&) override;
+    void visibilityChanged() override;
 
 private:
+    void timerCallback() override;
+    std::unique_ptr<CompLevelMeter> meter;
     ui::ParamToggle* onOff = nullptr;
     CompSchematic*   curve = nullptr;
     CompEqGraph*     eq = nullptr;
