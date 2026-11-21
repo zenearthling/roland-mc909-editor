@@ -31,6 +31,10 @@ public:
         /** One line under that button ("snd909.svd, 37 patches"), or empty. */
         std::function<juce::String (mc909search::Kind)> sourceInfo;
 
+        /** Esc after browsing waves: put back whatever the editor saved when browsing began. If unset,
+            the overlay re-selects the original wave number itself. */
+        std::function<void()> cancelBrowse;
+
         /** The overlay has hidden itself; give keyboard focus back. */
         std::function<void()> closed;
     };

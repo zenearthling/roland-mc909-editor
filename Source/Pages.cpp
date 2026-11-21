@@ -38,10 +38,25 @@ WaveBar::WaveBar (MC909EditorProcessor& p, const juce::String& rootPrefix)
     nameLabel.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (nameLabel);
 
-    browse.setTooltip ("Browse all 693 internal waveforms by name. Up / Down loads and plays each one; "
-                       "Enter keeps it, Esc goes back to the old one.");
-    browse.onClick = [this] { if (onBrowse) onBrowse(); };
+    browse.setTooltip ("Browse all 693 internal waveforms by name, for Wave L or Wave R. Up / Down loads and plays each "
+                       "one (the tone's other tones are muted while you browse); Enter keeps it, Esc goes back to the old one.");
+    browse.onClick = [this] { showBrowseMenu(); };
     addAndMakeVisible (browse);
+}
+
+void WaveBar::showBrowseMenu()
+{
+    juce::PopupMenu m;
+    m.addItem (1, "Browse for Wave L  (Wave R off: plays on both sides)");
+    m.addItem (2, "Browse for Wave R  (keeps Wave L)");
+
+    juce::Component::SafePointer<WaveBar> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&browse),
+                     [safe] (int r)
+                     {
+                         if (safe != nullptr && r > 0 && safe->onBrowse)
+                             safe->onBrowse (r - 1);
+                     });
 }
 
 void WaveBar::resized()
@@ -85,7 +100,7 @@ TonePage::TonePage (MC909EditorProcessor& p) : PageBase (p)
     waveL     = add<ParamNumber> ("tone.wave_l", "Wave L");
     waveR     = add<ParamNumber> ("tone.wave_r", "Wave R");
     waveBar   = add<WaveBar> (juce::String ("tone."));
-    waveBar->onBrowse = [this] { if (onBrowseWaves) onBrowseWaves(); };
+    waveBar->onBrowse = [this] (int t) { if (onBrowseWaves) onBrowseWaves (t); };
     fxmSwitch = add<ParamToggle> ("tone.fxm_sw", "FXM");
     fxmColor  = add<ParamChoice> ("tone.fxm_color", "FXM Color");
     fxmDepth  = add<ParamKnob>   ("tone.fxm_depth", "FXM Depth");
@@ -902,7 +917,7 @@ RhythmPage::RhythmPage (MC909EditorProcessor& p) : PageBase (p)
     waveL     = add<ParamNumber> ("rn.t.wave_l", "Wave L");
     waveR     = add<ParamNumber> ("rn.t.wave_r", "Wave R");
     waveBar   = add<WaveBar> (juce::String ("rn.t."));
-    waveBar->onBrowse = [this] { if (onBrowseWaves) onBrowseWaves(); };
+    waveBar->onBrowse = [this] (int t) { if (onBrowseWaves) onBrowseWaves (t); };
     fxmSwitch = add<ParamToggle> ("rn.t.fxm_sw", "FXM");
     fxmColor  = add<ParamChoice> ("rn.t.fxm_color", "FXM Color");
     fxmDepth  = add<ParamKnob>   ("rn.t.fxm_depth", "FXM Depth");

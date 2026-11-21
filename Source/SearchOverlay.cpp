@@ -206,7 +206,9 @@ void SearchOverlay::close()
     ++loadToken;
 
     // Esc after browsing: put the original wave back (silently).
-    if (autoLoad && ! committed && autoChanged && originalWave > 0 && host.perform)
+    if (autoLoad && ! committed && autoChanged && host.cancelBrowse)
+        host.cancelBrowse();
+    else if (autoLoad && ! committed && autoChanged && originalWave > 0 && host.perform)
         for (int i = 0; i < kNumEntries; ++i)
             if (kEntries[i].kind == Kind::waveform && kEntries[i].number == originalWave)
             {

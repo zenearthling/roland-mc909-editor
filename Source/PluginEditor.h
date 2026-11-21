@@ -269,7 +269,13 @@ private:
     // Browser over every waveform / patch / kit / pattern in the MC-909 patch list.
     std::unique_ptr<SearchOverlay> searchOverlay;
     void openSearch();
-    void browseWaves();
+    void browseWaves (int target = 0);        // 0 = Wave L, 1 = Wave R
+    void beginWaveBrowse (int target);
+    void endWaveBrowse (bool restoreWaves);
+    int  waveTarget = 0;
+    int  savedWaveGroup = 0, savedWaveL = 0, savedWaveR = 0;
+    int  savedTmtSwitch[4] = { 1, 1, 1, 1 };
+    bool waveBrowseActive = false;
     bool rhythmTabActive() const;
     juce::String searchActionText (const mc909search::Entry&) const;
     juce::String performSearchAction (const mc909search::Entry&, bool audition);

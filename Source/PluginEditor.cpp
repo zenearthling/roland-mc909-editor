@@ -178,7 +178,8 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     SearchOverlay::Host searchHost;
     searchHost.describeAction = [this] (const mc909search::Entry& e) { return searchActionText (e); };
     searchHost.perform        = [this] (const mc909search::Entry& e, bool audition) { return performSearchAction (e, audition); };
-    searchHost.closed         = [this] { grabKeyboardFocus(); };
+    searchHost.cancelBrowse   = [this] { endWaveBrowse (true); };
+    searchHost.closed         = [this] { endWaveBrowse (false); grabKeyboardFocus(); };
     searchHost.chooseSource   = [this] (mc909search::Kind k) { chooseSvd (k); };
     searchHost.sourceInfo     = [this] (mc909search::Kind k) { return svdInfo (k); };
     searchOverlay = std::make_unique<SearchOverlay> (std::move (searchHost));
@@ -348,11 +349,11 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     }
 
     for (auto* page : pages)
-        page->onBrowseWaves = [this] { browseWaves(); };
+        page->onBrowseWaves = [this] (int t) { browseWaves (t); };
 
    #ifdef MC909_UI_DEMO
     if (juce::SystemStats::getEnvironmentVariable ("MC909_DEMO_BROWSE", {}).isNotEmpty())
-        juce::Timer::callAfterDelay (2500, [this] { browseWaves(); });
+        juce::Timer::callAfterDelay (2500, [this] { browseWaves (0); });
    #endif
 
     keyboard.setAvailableRange (24, 96);
@@ -428,16 +429,72 @@ bool MC909EditorComponent::keyPressed (const juce::KeyPress& k)
 
 void MC909EditorComponent::openSearch()
 {
+    waveTarget = 0;                  // a wave picked from plain Search goes to Wave L, as always
     searchOverlay->open();
 }
 
-void MC909EditorComponent::browseWaves()
+void MC909EditorComponent::browseWaves (int target)
 {
+    beginWaveBrowse (target);
+
     // Start on the wave that is loaded now, if it is one of the internal waveforms.
     const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
-    const bool internal = proc.getParameterValue (ui::findParam (root + "wave_group")) == 0;
-    const int current = internal ? proc.getParameterValue (ui::findParam (root + "wave_l")) : 0;
+    const bool internal = savedWaveGroup == 0;
+    const int current = internal ? (waveTarget == 1 ? savedWaveR : savedWaveL) : 0;
     searchOverlay->openOnWaveforms (current);
+}
+
+// While browsing waves, remember what the tone had so Esc can put it back exactly, and switch the
+// patch's other tones off so the audition is the wave you are on, not the wave plus the rest of the
+// patch. Everything is put back when the browser closes.
+void MC909EditorComponent::beginWaveBrowse (int target)
+{
+    if (waveBrowseActive)
+        endWaveBrowse (false);
+
+    waveTarget = target == 1 ? 1 : 0;
+    const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
+    savedWaveGroup = proc.getParameterValue (ui::findParam (root + "wave_group"));
+    savedWaveL     = proc.getParameterValue (ui::findParam (root + "wave_l"));
+    savedWaveR     = proc.getParameterValue (ui::findParam (root + "wave_r"));
+    waveBrowseActive = true;
+
+    if (! rhythmTabActive())
+    {
+        const int me = proc.getSelectedTone();
+        for (int t = 0; t < 4; ++t)
+        {
+            const auto& def = ui::findParam ("tmt.tmt" + juce::String (t + 1) + ".sw");
+            savedTmtSwitch[t] = proc.getParameterValue (def);
+            if (t == me)
+            {
+                if (savedTmtSwitch[t] == 0)
+                    proc.setParameterValue (def, 1);      // the tone being browsed must be audible
+            }
+            else if (savedTmtSwitch[t] != 0)
+                proc.setParameterValue (def, 0);
+        }
+    }
+}
+
+void MC909EditorComponent::endWaveBrowse (bool restoreWaves)
+{
+    if (! waveBrowseActive)
+        return;
+
+    waveBrowseActive = false;
+    const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
+
+    if (restoreWaves)
+    {
+        proc.setParameterValue (ui::findParam (root + "wave_group"), savedWaveGroup);
+        proc.setParameterValue (ui::findParam (root + "wave_l"), savedWaveL);
+        proc.setParameterValue (ui::findParam (root + "wave_r"), savedWaveR);
+    }
+
+    if (! rhythmTabActive())
+        for (int t = 0; t < 4; ++t)
+            proc.setParameterValue (ui::findParam ("tmt.tmt" + juce::String (t + 1) + ".sw"), savedTmtSwitch[t]);
 }
 
 bool MC909EditorComponent::rhythmTabActive() const
@@ -618,10 +675,19 @@ juce::String MC909EditorComponent::performSearchAction (const mc909search::Entry
             // Internal waveform on the left channel; right off, which the unit plays on both sides.
             const juce::String root = rhythmTabActive() ? "rn.t." : "tone.";
             proc.setParameterValue (ui::findParam (root + "wave_group"), 0);
-            proc.setParameterValue (ui::findParam (root + "wave_l"), e.number);
-            proc.setParameterValue (ui::findParam (root + "wave_r"), 0);
+            if (waveTarget == 1)
+            {
+                proc.setParameterValue (ui::findParam (root + "wave_r"), e.number);      // keeps Wave L
+                if (proc.getParameterValue (ui::findParam (root + "wave_l")) == 0)       // a lone R would be silent
+                    proc.setParameterValue (ui::findParam (root + "wave_l"), e.number);
+            }
+            else
+            {
+                proc.setParameterValue (ui::findParam (root + "wave_l"), e.number);
+                proc.setParameterValue (ui::findParam (root + "wave_r"), 0);
+            }
 
-            done = "Loaded " + juce::String (juce::CharPointer_UTF8 (e.name)) + " (waveform " + juce::String (e.number) + ")";
+            done = (waveTarget == 1 ? "Loaded (Wave R) " : "Loaded ") + juce::String (juce::CharPointer_UTF8 (e.name)) + " (waveform " + juce::String (e.number) + ")";
             setLoaded (part, "Now loaded:  Waveform " + juce::String (e.number).paddedLeft ('0', 3) + "  "
                                  + juce::String (juce::CharPointer_UTF8 (e.name))
                                  + (rhythmTabActive() ? "  (pad " + juce::String (proc.getSelectedPad() + 1) + ")"

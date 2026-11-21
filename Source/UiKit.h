@@ -275,7 +275,7 @@ public:
     void paint (juce::Graphics&) override;
 
     /** Set by the editor: opens the waveform browser (the Wave card's Browse button). */
-    std::function<void()> onBrowseWaves;
+    std::function<void (int)> onBrowseWaves;   // 0 = Wave L, 1 = Wave R
 
 protected:
     struct Card { juce::Rectangle<int> area; juce::String title; };

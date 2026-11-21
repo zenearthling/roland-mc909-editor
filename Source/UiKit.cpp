@@ -578,8 +578,18 @@ void ParamNumber::mouseDrag (const juce::MouseEvent& e)
 
     const bool free = spec.active && spec.kind == NumberSpec::Kind::free;
     const int span = (spec.active && ! free) ? 1 : def.rawMax - def.rawMin;
+    const int delta = e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY();
+
+    // Wave numbers run 0-16384 but real ones stop around 700, so a span/400 step (40 a pixel)
+    // flew past everything. One a pixel, a quarter of that with Shift.
+    if (! spec.active && span > 1000)
+    {
+        commit (dragStart + juce::roundToInt ((float) delta * (e.mods.isShiftDown() ? 0.25f : 1.0f)));
+        return;
+    }
+
     const int step = e.mods.isShiftDown() ? 1 : juce::jmax (1, span / 400);
-    commit (dragStart + (e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY()) * step);
+    commit (dragStart + delta * step);
 }
 
 void ParamNumber::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
@@ -588,7 +598,9 @@ void ParamNumber::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWh
         return;
 
     const bool free = ! spec.active || spec.kind == NumberSpec::Kind::free;
-    const int unitStep = free ? (e.mods.isShiftDown() ? 1 : 250) : 1;
+    const bool wide = ! spec.active && (def.rawMax - def.rawMin) > 1000;     // wave numbers
+    const int unitStep = wide ? (e.mods.isShiftDown() ? 10 : 1)
+                              : free ? (e.mods.isShiftDown() ? 1 : 250) : 1;
     const int dir = w.deltaY > 0 ? 1 : w.deltaY < 0 ? -1 : 0;
     if (dir != 0)
         commit (proc.getParameterValue (def) + dir * unitStep);

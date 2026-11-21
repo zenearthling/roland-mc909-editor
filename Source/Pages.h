@@ -10,9 +10,11 @@ public:
     void resized() override;
     void refresh() override;
 
-    std::function<void()> onBrowse;
+    /** Argument: 0 = browse for Wave L, 1 = browse for Wave R. */
+    std::function<void (int)> onBrowse;
 
 private:
+    void showBrowseMenu();
     juce::String root;
     juce::Label nameLabel;
     juce::TextButton browse { "Browse..." };
