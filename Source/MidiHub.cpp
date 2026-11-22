@@ -187,6 +187,13 @@ void MidiHub::handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessa
         return;
     }
 
+    if (m.isProgramChange() || m.isController())
+    {
+        if (onControlMessage)
+            onControlMessage (m);
+        return;
+    }
+
     if (! m.isSysEx())
         return;
 

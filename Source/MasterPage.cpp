@@ -346,7 +346,9 @@ void MasterBandGraph::paint (juce::Graphics& g)
     {
         g.setColour (col::textDim.withAlpha (0.75f));
         g.setFont (font (11.0f));
-        g.drawText ("No audio reaching the plugin: route the MC-909's return through this track for a live spectrum and meters",
+        g.drawText (MC909EditorProcessor::isInstrumentBuild
+                        ? "No audio reaching the plugin: set Audio From (in the device header) to the track carrying the MC-909's return"
+                        : "No audio reaching the plugin: route the MC-909's return through this track for a live spectrum and meters",
                     juce::Rectangle<float> (p.getX(), p.getY() + 6.0f, p.getWidth(), 16.0f).toNearestInt(),
                     juce::Justification::centred);
     }

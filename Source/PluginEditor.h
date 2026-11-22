@@ -240,7 +240,15 @@ private:
     juce::TextEditor patchNameEditor;
     juce::Label statusLabel;
 
-    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
+    /** TabbedComponent that tells the editor which tab was just opened. */
+    struct NotifyingTabs : juce::TabbedComponent
+    {
+        using juce::TabbedComponent::TabbedComponent;
+        std::function<void (const juce::String&)> onTabOpened;
+        void currentTabChanged (int, const juce::String& name) override { if (onTabOpened) onTabOpened (name); }
+    };
+    NotifyingTabs tabs { juce::TabbedButtonBar::TabsAtTop };
+    bool rhythmStale = false;      // a part change skipped reading the rhythm kit; read it when the Rhythm tab opens
     juce::OwnedArray<ui::PageBase> pages;
     juce::OwnedArray<ParamPanel> panels;
 
@@ -254,6 +262,8 @@ private:
 
     // Keys that light up for notes coming from the host (MIDI tracks, MPK) or the unit.
     juce::ToggleButton thruButton { "Thru to 909" };
+    juce::ToggleButton followButton { "Follow unit" };
+    juce::ToggleButton toPartButton { "To part" };
     bool shownKeys[128] {};
     int  shownKeysChannel = -1;
     bool applyingExternalKeys = false;

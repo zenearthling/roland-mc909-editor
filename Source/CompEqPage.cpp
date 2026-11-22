@@ -550,7 +550,15 @@ void CompLevelMeter::paint (juce::Graphics& g)
 
     g.setColour (col::textDim.withAlpha (0.75f));
     g.setFont (font (9.0f));
-    g.drawText (haveSignal ? "dBFS, whole mix, after the unit's compressor" : "no audio arriving: route the MC-909 through this track",
+    juce::String caption = haveSignal ? juce::String ("dBFS, whole mix, after the unit's compressor")
+                         : MC909EditorProcessor::isInstrumentBuild ? juce::String ("no audio: set Audio From to the return")
+                                                                   : juce::String ("no audio arriving: route the MC-909 through this track");
+    if (! haveSignal && MC909EditorProcessor::isInstrumentBuild)
+    {
+        const int sc = proc.sidechainState();
+        caption += sc < 0 ? " [sidechain: waiting]" : sc == 0 ? " [sidechain: OFF]" : " [sidechain: on, " + juce::String (sc) + " ch]";
+    }
+    g.drawText (caption,
                 juce::Rectangle<float> (b.getX() + 10.0f, b.getBottom() - 15.0f, b.getWidth() - 14.0f, 12.0f).toNearestInt(),
                 juce::Justification::centredLeft);
 }
@@ -653,6 +661,8 @@ void CompEqPage::resized()
         output->setBounds  (inner.removeFromLeft (170).withTrimmedTop (20).withHeight (42));
         inner.removeFromLeft (24);
         meter->setBounds   (inner.removeFromLeft (290).withHeight (86));
+        inner.removeFromLeft (28);
+        outNote = inner.withTrimmedRight (6);
     }
 }
 
@@ -666,8 +676,9 @@ void CompEqPage::paint (juce::Graphics& g)
                       "Roland does not publish what each step is worth, so the curve shows the shape only.",
                       compNote, juce::Justification::centredLeft, 2);
 
-    const auto& out = cards.back().area;
-    g.drawFittedText ("The compressor and EQ are a single processor shared by the whole unit: send a part to it with that part's "
-                      "Output Select = COMP (Part tab).",
-                      out.withTrimmedLeft (out.getWidth() / 2 + 20).reduced (10, 30), juce::Justification::centredLeft, 3);
+    g.setColour (col::text.withAlpha (0.85f));
+    g.setFont (font (13.0f));
+    g.drawFittedText ("The compressor and EQ are a single processor shared by the whole unit. To send a part through it, "
+                      "set that part's Output Select to COMP (Part tab).",
+                      outNote, juce::Justification::centredLeft, 5, 0.9f);
 }

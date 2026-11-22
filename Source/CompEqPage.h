@@ -126,5 +126,5 @@ private:
     ui::ParamKnob *attack = nullptr, *release = nullptr, *thresholdKnob = nullptr, *ratioKnob = nullptr, *gain = nullptr;
     ui::ParamChoice *lowFreq = nullptr, *highFreq = nullptr, *output = nullptr;
     ui::ParamKnob *lowGain = nullptr, *highGain = nullptr, *level = nullptr, *revSend = nullptr;
-    juce::Rectangle<int> compNote;
+    juce::Rectangle<int> compNote, outNote;
 };

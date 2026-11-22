@@ -59,6 +59,10 @@ MC909EditorProcessor::MC909EditorProcessor()
     : AudioProcessor (BusesProperties()
 #ifndef MC909_INSTRUMENT
                         .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
+#else
+                        // The unit's return, taken from another track (Live: "Audio From" in the device
+                        // header). Only read for the Master and Comp/EQ meters; never heard.
+                        .withInput  ("Sidechain", juce::AudioChannelSet::stereo(), false)
 #endif
                         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       valueTree (*this, nullptr, "MC909", makeLayout())
@@ -69,6 +73,8 @@ MC909EditorProcessor::MC909EditorProcessor()
     {
         noteSeen (m.getChannel() - 1, m.getNoteNumber(), m.isNoteOn());
     };
+
+    hub.onControlMessage = [this] (const juce::MidiMessage& m) { controlFromUnit (m); };
 
     for (const auto& ap : quick::automatable())
         valueTree.addParameterListener (ap.id, this);
@@ -163,7 +169,29 @@ void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // spectrum on the Master tab. Instrument build: there is no audio input, so the output is
     // silence.
     if (isInstrumentBuild)
+    {
+        // The sidechain shares channels with the output, so look at it BEFORE clearing. Some hosts
+        // hand an unrouted sidechain the plugin's own last output; as that is silence, it reads as
+        // "no audio" either way. If the bus is off, feed silence so "no audio" shows after a couple
+        // of seconds instead of the last level freezing.
+        const int n = buffer.getNumSamples();
+        auto* sc = getBus (true, 0);
+        sidechainChannels = (sc != nullptr && sc->isEnabled()) ? sc->getNumberOfChannels() : 0;
+        if (sc != nullptr && sc->isEnabled() && sc->getNumberOfChannels() > 0)
+        {
+            analyser.process (getBusBuffer (buffer, true, 0));
+        }
+        else
+        {
+            for (int pos = 0; pos < n; pos += silence.getNumSamples())
+            {
+                auto* ch = silence.getArrayOfWritePointers();
+                juce::AudioBuffer<float> view (ch, 2, juce::jmin (silence.getNumSamples(), n - pos));
+                analyser.process (view);
+            }
+        }
         buffer.clear();
+    }
     else
         analyser.process (buffer);
 
@@ -171,9 +199,15 @@ void MC909EditorProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // and, if Thru is on, is passed on to the MC-909 over the plugin's own MIDI Out.
     const bool thru = midiThru.load();
 
+    const bool toPart = thruToPart.load();
+    const int partChannel = juce::jlimit (0, 15, selectedPart) + 1;
+
     for (const auto metadata : midiMessages)
     {
-        const auto m = metadata.getMessage();
+        auto m = metadata.getMessage();
+
+        if (toPart && m.getChannel() > 0 && ! m.isSysEx())
+            m.setChannel (partChannel);
 
         if (m.isNoteOnOrOff())
             noteSeen (m.getChannel() - 1, m.getNoteNumber(), m.isNoteOn());
@@ -271,6 +305,7 @@ void MC909EditorProcessor::setParameterValue (const ParamDef& p, int rawValue, b
 
     if (sendToDevice)
     {
+        lastLocalEditMs = juce::Time::getMillisecondCounter();
         const auto addr = blockAddress (p.block, selectedPart, selectedTone, selectedPad) + offset;
         hub.send (roland::makeDT1 (deviceId, addr, bytes.data(), bytes.size()));
     }
@@ -446,6 +481,7 @@ void MC909EditorProcessor::probePatchSizes()
 
 void MC909EditorProcessor::loadPatchFromSvd (const svd::PatchBlocks& pb)
 {
+    lastLocalEditMs = juce::Time::getMillisecondCounter();
     if (pb.common.size() != mc909::blockByteCount (Block::patchCommon)
         || pb.tmt.size() != mc909::blockByteCount (Block::patchTMT))
         return;
@@ -483,6 +519,7 @@ void MC909EditorProcessor::loadPatchFromSvd (const svd::PatchBlocks& pb)
 
 void MC909EditorProcessor::sendAll()
 {
+    lastLocalEditMs = juce::Time::getMillisecondCounter();
     std::vector<juce::MidiMessage> out;
 
     auto pushBlock = [&] (Block b)
@@ -579,8 +616,107 @@ void MC909EditorProcessor::assignMacro (int slot, const ParamDef* def)
     editListeners.call ([] (EditListener& l) { l.modelChanged(); });
 }
 
+void MC909EditorProcessor::controlFromUnit (const juce::MidiMessage& m)
+{
+    if (! followUnit.load())
+    {
+        if (m.isProgramChange())
+            hub.logLine ("unit Program Change ignored: Follow unit is off");
+        return;
+    }
+
+    const auto now = juce::Time::getMillisecondCounter();
+
+    // Our own edits can come back as control changes; ignore those for a moment.
+    if (now - lastLocalEditMs.load() < 900)
+    {
+        if (m.isProgramChange())
+            hub.logLine ("unit Program Change ignored: within 900 ms of our own send");
+        return;
+    }
+
+    const int ch0 = m.getChannel() - 1;
+    if (ch0 < 0 || ch0 > 15)
+        return;
+
+    if (m.isProgramChange() || (m.isController() && (m.getControllerNumber() == 0 || m.getControllerNumber() == 32)))
+        hub.logLine ("unit sent " + juce::String (m.isProgramChange() ? "Program Change " + juce::String (m.getProgramChangeNumber())
+                                                                     : "Bank Select CC" + juce::String (m.getControllerNumber()) + "=" + juce::String (m.getControllerValue()))
+                     + " on ch " + juce::String (m.getChannel()) + " (editor is on part " + juce::String (selectedPart + 1) + ")");
+
+    if (m.isProgramChange())
+    {
+        // A patch or rhythm set was chosen on the unit: wait for the Bank Select / Program Change
+        // pair to finish, then read that part.
+        followPart = ch0;
+        followDueAt = now + 350;
+        return;
+    }
+
+    if (m.isController())
+    {
+        const int cc = m.getControllerNumber();
+
+        if (cc == 0 || cc == 32)                       // bank select: part of a patch change
+        {
+            followPart = ch0;
+            followDueAt = now + 350;
+            return;
+        }
+
+        // Panel knobs and sliders on the selected part (Roland's table: pitch, filter, amp, envelopes, LFO,
+        // portamento, unison). Read back once they stop moving.
+        static const int panelCCs[] { 5, 9, 15, 16, 18, 19, 21, 25, 26, 27, 28, 29, 31, 34, 35, 36, 37, 39, 40,
+                                      71, 72, 73, 74, 75, 77, 80, 81, 82, 83, 89, 90, 126, 127 };
+        for (int c : panelCCs)
+            if (c == cc)
+            {
+                if (followDueAt.load() == 0 || followPart.load() == ch0 || followPart.load() < 0)
+                {
+                    followPart = ch0;
+                    followDueAt = now + 450;
+                }
+                return;
+            }
+    }
+}
+
+void MC909EditorProcessor::requestPatchOnly (int gapMs)
+{
+    for (auto b : { Block::partInfoPart, Block::patchCommon, Block::patchTMT })
+        requestBlock (b, gapMs);
+
+    const int savedTone = selectedTone;
+    for (int t = 0; t < 4; ++t)
+    {
+        selectedTone = t;
+        requestBlock (Block::patchTone, gapMs);
+    }
+    selectedTone = savedTone;
+}
+
 void MC909EditorProcessor::timerCallback()
 {
+    // Follow the unit: a patch change or a panel knob move was reported a moment ago.
+    if (const auto due = followDueAt.load(); due != 0 && (juce::int32) (juce::Time::getMillisecondCounter() - due) >= 0)
+    {
+        followDueAt = 0;
+        const int part = followPart.exchange (-1);
+
+        if (followUnit.load())
+        {
+            if (part < 0 || part == selectedPart)
+            {
+                hub.logLine ("--- following the unit: reading part " + juce::String (selectedPart + 1) + " ---");
+                requestPatchOnly();
+                if (rhythmTabOpen.load())
+                    requestRhythm (100);        // a rhythm set change shows in the pad labels
+            }
+            else
+                requestPartInfo();                      // another part changed: refresh the mixer's names and levels
+        }
+    }
+
     const uint32_t mask = macroDirty.exchange (0);
     if (mask == 0)
         return;
@@ -642,6 +778,7 @@ void MC909EditorProcessor::playTestNote (int noteNumber, int velocity, bool on)
 
 void MC909EditorProcessor::selectBankProgram (int part, int msb, int lsb, int program)
 {
+    lastLocalEditMs = juce::Time::getMillisecondCounter();
     const int channel = juce::jlimit (1, 16, part + 1);
     hub.sendAll ({ juce::MidiMessage::controllerEvent (channel, 0,  juce::jlimit (0, 127, msb)),
                    juce::MidiMessage::controllerEvent (channel, 32, juce::jlimit (0, 127, lsb)),
@@ -656,6 +793,7 @@ void MC909EditorProcessor::detectDevice()
 //==============================================================================
 void MC909EditorProcessor::parameterChanged (const juce::String& paramId, float newValue)
 {
+    lastLocalEditMs = juce::Time::getMillisecondCounter();
     if (paramId.startsWith ("macro."))
     {
         const int slot = paramId.fromFirstOccurrenceOf (".", false, false).getIntValue() - 1;
@@ -700,6 +838,23 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
         return;
     }
 
+    // Panel moves on the unit arrive as short 11-byte messages: F0 41 dev 5D 12 <part 0x20+n> <param> <value> .. csum F7
+    // (a knob sweep sends one per step). We don't decode them; any of them means "that part changed on the panel",
+    // so Follow re-reads the part once the stream stops.
+    if (const auto* raw = m.getSysExData(); m.getSysExDataSize() >= 7 && raw[0] == 0x41 && raw[2] == 0x5d && raw[3] == 0x12
+                                            && (raw[4] >> 4) == 2)
+    {
+        if (followUnit.load() && juce::Time::getMillisecondCounter() - lastLocalEditMs.load() >= 900)
+        {
+            const int part = raw[4] & 0x0f;
+            if (followDueAt.load() == 0)
+                hub.logLine ("unit panel move on part " + juce::String (part + 1) + " (param " + juce::String::toHexString (raw[5]) + ")");
+            followPart = part;
+            followDueAt = juce::Time::getMillisecondCounter() + 450;
+        }
+        return;
+    }
+
     roland::DT1 dt;
     if (! roland::parseDT1 (m, dt))
     {
@@ -736,6 +891,18 @@ void MC909EditorProcessor::sysExReceived (const juce::MidiMessage& m)
 
             partInfoSeen[part] = true;
             matched = true;
+
+            // The unit announces a patch / rhythm set change on a part as a tiny Part Info write:
+            // 3 bytes at offset 1 (bank MSB, bank LSB, program). Our own reads come back from offset 0
+            // and are bigger, so this is the unit speaking. Follow it.
+            if (followUnit.load() && incoming - base == 1 && dt.data.size() == 3
+                && juce::Time::getMillisecondCounter() - lastLocalEditMs.load() >= 900)
+            {
+                hub.logLine ("unit changed the patch on part " + juce::String (part + 1) + " (bank "
+                             + juce::String (dt.data[0]) + "/" + juce::String (dt.data[1]) + ", program " + juce::String (dt.data[2]) + ")");
+                followPart = part;
+                followDueAt = juce::Time::getMillisecondCounter() + 350;
+            }
         }
     }
 
@@ -797,6 +964,8 @@ void MC909EditorProcessor::getStateInformation (juce::MemoryBlock& destData)
     root.setProperty ("midiOut",  hub.currentOutputId(), nullptr);
     root.setProperty ("midiIn",   hub.currentInputId(),  nullptr);
     root.setProperty ("midiThru", midiThru.load(), nullptr);
+    root.setProperty ("thruToPart", thruToPart.load(), nullptr);
+    root.setProperty ("followUnit", followUnit.load(), nullptr);
 
     juce::ValueTree blocksTree ("Blocks");
     for (const auto& [key, data] : blocks)
@@ -870,6 +1039,8 @@ void MC909EditorProcessor::setStateInformation (const void* data, int sizeInByte
     }
 
     midiThru = (bool) root.getProperty ("midiThru", isInstrumentBuild);
+    thruToPart = (bool) root.getProperty ("thruToPart", isInstrumentBuild);
+    followUnit = (bool) root.getProperty ("followUnit", true);
 
     hub.openOutput (root.getProperty ("midiOut", "").toString());
     hub.openInput  (root.getProperty ("midiIn",  "").toString());

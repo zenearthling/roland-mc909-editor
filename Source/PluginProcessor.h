@@ -17,7 +17,12 @@ public:
     ~MC909EditorProcessor() override;
 
     //==============================================================================
-    void prepareToPlay (double sampleRate, int) override { analyser.prepare (sampleRate); }
+    void prepareToPlay (double sampleRate, int samplesPerBlock) override
+    {
+        analyser.prepare (sampleRate);
+        silence.setSize (2, juce::jmax (samplesPerBlock, 4096));
+        silence.clear();
+    }
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout&) const override { return true; }
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -92,9 +97,29 @@ public:
     static constexpr uint8_t strikeKeyboard = 2, strikePads = 4;
     uint8_t takeNoteState (int channel0, int note, uint8_t strikeBit);
 
+    /** Follow the unit: when it reports a patch change or a panel knob move (needs System > MIDI Tx
+        on the unit), read the part back so the editor shows what the unit has. */
+    void setFollowUnit (bool on) { followUnit = on; }
+
+    /** The editor says whether the Rhythm tab is showing, so Follow unit also re-reads the rhythm kit then. */
+    void setRhythmTabOpen (bool open) { rhythmTabOpen = open; }
+    bool getFollowUnit() const   { return followUnit.load(); }
+
+    /** Instrument build: -1 not seen yet, 0 the host has not switched the sidechain on, else its channel count.
+        Shown next to "no audio" so it is clear whether Live offered the sidechain at all. */
+    int sidechainState() const noexcept { return sidechainChannels.load(); }
+
+    /** Read only the selected part's patch (common, TMT, four tones) and Part Info: lighter than requestAll. */
+    void requestPatchOnly (int gapMs = 120);
+
     /** Forward MIDI the host sends this plugin on to the MC-909 (instrument build). */
     void setMidiThru (bool on)  { midiThru = on; }
     bool getMidiThru() const    { return midiThru.load(); }
+
+    /** Instrument build: play whatever the host sends (the MPK, a MIDI clip) on the part selected in the
+        editor, whatever channel it arrives on. Off = each message keeps its own channel. */
+    void setThruToPart (bool on) { thruToPart = on; }
+    bool getThruToPart() const   { return thruToPart.load(); }
 
     static constexpr bool isInstrumentBuild =
 #ifdef MC909_INSTRUMENT
@@ -187,6 +212,17 @@ private:
     bool    partInfoSeen[16] {};
     std::atomic<uint8_t> noteStates[16][128] {};
     std::atomic<bool>    midiThru { isInstrumentBuild };
+    std::atomic<bool>    thruToPart { isInstrumentBuild };
+
+    // Follow the unit (see setFollowUnit). The MIDI thread only sets these; timerCallback acts on them.
+    std::atomic<bool>     followUnit { true };
+    std::atomic<bool>     rhythmTabOpen { false };
+    std::atomic<uint32_t> followDueAt { 0 };      // 0 = nothing pending, else the time (ms) to read
+    std::atomic<int>      followPart { -1 };      // part whose patch changed, -1 = selected part
+    std::atomic<uint32_t> lastLocalEditMs { 0 };  // our own edits: ignore echoes for a moment
+    void controlFromUnit (const juce::MidiMessage&);
+    juce::AudioBuffer<float> silence;
+    std::atomic<int> sidechainChannels { -1 };   // -1 = not seen yet, 0 = bus off, n = channels the host gave us
 
     int     selectedPart = 0;
     int     selectedTone = 0;

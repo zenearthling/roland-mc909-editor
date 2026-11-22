@@ -164,6 +164,20 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     thruButton.onClick = [this] { proc.setMidiThru (thruButton.getToggleState()); };
     content.addAndMakeVisible (thruButton);
 
+    toPartButton.setTooltip ("Play the MPK and any MIDI clips routed to this plugin on the part selected above, "
+                             "whatever channel they arrive on. Turn off to let each message keep its own channel "
+                             "(for example, several MIDI clips driving different parts).");
+    toPartButton.setToggleState (proc.getThruToPart(), juce::dontSendNotification);
+    toPartButton.onClick = [this] { proc.setThruToPart (toPartButton.getToggleState()); };
+    content.addAndMakeVisible (toPartButton);
+
+    followButton.setTooltip ("Read the part back when you change a patch or turn a knob on the MC-909, so the editor "
+                             "shows what the unit has. Needs System > MIDI Tx (F3) on the unit: Transmit Program Change and "
+                             "Transmit Bank Select ON, and Transmit Patch Edit Type set (QUICK or CC).");
+    followButton.setToggleState (proc.getFollowUnit(), juce::dontSendNotification);
+    followButton.onClick = [this] { proc.setFollowUnit (followButton.getToggleState()); };
+    content.addAndMakeVisible (followButton);
+
     macroBar = std::make_unique<MacroBar> (proc, [this] { teachModeChanged(); });
     content.addAndMakeVisible (*macroBar);
     teachOverlay = std::make_unique<TeachOverlay> (
@@ -253,7 +267,17 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     partBox.onChange = [this]
     {
         proc.setSelectedPart (partBox.getSelectedId() - 1);
-        proc.requestAll();
+
+        // Reading the whole unit (including all 16 rhythm pads) takes several seconds, during which the
+        // unit is slow to answer notes. For a part change read only that part's patch, and leave the
+        // rhythm kit until the Rhythm tab is opened.
+        if (rhythmTabActive())
+            proc.requestAll();
+        else
+        {
+            proc.requestPatchOnly();
+            rhythmStale = true;
+        }
     };
 
     for (int i = 0; i < 4; ++i)
@@ -295,6 +319,16 @@ MC909EditorComponent::MC909EditorComponent (MC909EditorProcessor& p)
     tabs.setTabBarDepth (32);
     tabs.setOutline (0);
     tabs.setIndent (0);
+    tabs.onTabOpened = [this] (const juce::String& name)
+    {
+        proc.setRhythmTabOpen (name == "Rhythm");
+
+        if (name == "Rhythm" && rhythmStale)
+        {
+            rhythmStale = false;
+            proc.requestRhythm (100);
+        }
+    };
 
     pages.add (new TonePage (proc));
     pages.add (new ModPage (proc));
@@ -1070,7 +1104,9 @@ void MC909EditorComponent::resized()
         zoomOutButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
         zoomInButton.setBounds (row.removeFromLeft (30).reduced (1, 0));
         thruButton.setBounds (row.removeFromRight (110));
-        loadedLabel.setBounds (row.removeFromLeft (560).reduced (8, 0));
+        followButton.setBounds (row.removeFromRight (110));
+        toPartButton.setBounds (row.removeFromRight (90));
+        loadedLabel.setBounds (row.removeFromLeft (480).reduced (8, 0));
         channelLabel.setBounds (row);
     }
     macroBar->setBounds (r.removeFromBottom (42));

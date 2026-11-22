@@ -72,6 +72,10 @@ public:
         (pads or keys played on the unit itself). Keep it quick and lock-free. */
     std::function<void (const juce::MidiMessage&)> onNoteMessage;
 
+    /** Program Change, Bank Select and other control changes arriving from the unit (its panel
+        edits and patch changes, when System > MIDI Tx is on). Called on the MIDI thread. */
+    std::function<void (const juce::MidiMessage&)> onControlMessage;
+
     /** Append a line to the MIDI log file (Documents/MC909-Editor-midi-log.txt). */
     void logLine (const juce::String& line);
     static juce::File logFile();
