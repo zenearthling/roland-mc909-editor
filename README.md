@@ -1,8 +1,10 @@
-# MC-909 Editor — Audio Unit
+# MC-909 Editor
 
-An Audio Unit / VST3 / standalone editor for the Roland MC-909 Sampling Groovebox.
+An Audio Unit / VST3 editor for the Roland MC-909 Sampling Groovebox.
 It speaks the MC-909's published SysEx implementation directly, so the hardware
 can be programmed from inside a DAW instead of from the front panel.
+
+**One plugin.** MC-909 Editor is an instrument: put it on a MIDI track. Live routes your keyboard and other MIDI tracks to it (the keys and pads light up, *Thru to 909* passes notes on, *To part* plays the selected part, *Follow unit* tracks changes made on the unit), and its sidechain audio input feeds the Master and Comp/EQ meters. The audio-effect flavour of the same code is still in the source and builds with `-DMC909_BUILD_LEGACY_EFFECT=ON`.
 
 This is an original implementation written against Roland's *MC-909 MIDI
 Implementation* document (model ID `00 59`). It is not a port, decompilation, or
@@ -58,7 +60,7 @@ LFO rate, delay time, and the wave numbers.
 **Direct CoreMIDI, not host MIDI.** `MidiHub` opens its own MIDI ports rather
 than emitting SysEx from `processBlock`. Most DAWs filter, reorder, or drop
 SysEx on a plugin's MIDI output; going straight to CoreMIDI makes the plugin
-behave the same in Logic, Live, Bitwig, Reaper, and standalone.
+behave the same in Logic, Live, Bitwig and Reaper.
 
 **Two transports.** Individual edits go out as DT1 (`12`). Host automation goes
 out as Quick SysEx (model ID `5D`) — four bytes shorter, and it addresses
@@ -82,13 +84,13 @@ need no Xcode, no CMake, and no compiler on your own machine.
 3. Open the **Actions** tab. The build starts on its own; if not, pick *Build*
    and press *Run workflow*.
 4. Wait about five minutes. The finished run has an artifact called
-   **MC-909-Editor-macOS** containing `AU.zip`, `VST3.zip` and `Standalone.zip`.
+   **MC-909-Editor-macOS** containing `AU.zip` and `VST3.zip`.
 5. Unzip `AU.zip` and drop `MC-909 Editor.component` into
    `~/Library/Audio/Plug-Ins/Components/`.
 
 The workflow ad-hoc signs the bundles, which is what stops Apple Silicon hosts
-from silently rejecting them. It is not notarisation, so the standalone app will
-still show a Gatekeeper prompt the first time; right-click → Open clears it.
+from silently rejecting them. It is not notarisation, so macOS may still show a
+Gatekeeper prompt the first time; right-click → Open clears it.
 
 Pushing a tag such as `v0.1.0` additionally publishes a permanent GitHub
 release, which is handy if you want a stable download link.
@@ -104,7 +106,7 @@ automatically.
 ```bash
 cmake -B build -G Xcode
 cmake --build build --config Release
-auval -v aufx M909 Indp
+auval -v aumu M90I Indp
 ```
 
 `COPY_PLUGIN_AFTER_BUILD` installs to `~/Library/Audio/Plug-Ins/Components/`.
@@ -189,8 +191,8 @@ The MC-909's mastering effect is a three-band compressor. The Master tab draws i
 
 The curves and dials are drawn from the settings. The spectrum and meters read the audio
 that reaches the plugin, so they only move when the MC-909's audio return is routed through
-the track the editor sits on (in Standalone, when an audio input is set up for it). The
-plugin only looks at that audio; it passes it through unchanged. Because the return comes
+the editor's sidechain input (set *Audio From* in the device header to the track that carries
+the return). The plugin only listens to that audio. Because the return comes
 from the unit's output, it is the sound AFTER the unit's own compressor: the signal before it
 is not available, so gain reduction cannot be metered. The "GR at 0 dB in" figure on each
 curve is the setting's maximum reduction, not a measurement.

@@ -40,10 +40,7 @@ jobs:
       # Gatekeeper will still prompt the first time you open the standalone app.
       - name: Ad-hoc codesign
         run: |
-          for f in build/MC909Editor_artefacts/Release/AU/*.component \
-                   build/MC909Editor_artefacts/Release/VST3/*.vst3 \
-                   build/MC909Editor_artefacts/Release/Standalone/*.app \
-                   build/MC909EditorInstrument_artefacts/Release/AU/*.component \
+          for f in build/MC909EditorInstrument_artefacts/Release/AU/*.component \
                    build/MC909EditorInstrument_artefacts/Release/VST3/*.vst3; do
             [ -e "$f" ] || continue
             codesign --force --deep --timestamp=none -s - "$f"
@@ -53,22 +50,18 @@ jobs:
       - name: Validate the Audio Unit
         continue-on-error: true    # auval can be flaky on a headless runner
         run: |
-          cp -R build/MC909Editor_artefacts/Release/AU/*.component \
+          cp -R build/MC909EditorInstrument_artefacts/Release/AU/*.component \
                 ~/Library/Audio/Plug-Ins/Components/
           killall -9 AudioComponentRegistrar || true
           auval -a | grep -i "909" || true
-          auval -v aufx M909 Indp
+          auval -v aumu M90I Indp
 
       - name: Package
         run: |
           mkdir -p out
-          cd build/MC909Editor_artefacts/Release
-          for d in AU VST3 Standalone; do
-            [ -d "$d" ] && ditto -c -k --sequesterRsrc --keepParent "$d" "$GITHUB_WORKSPACE/out/$d.zip"
-          done
           cd "$GITHUB_WORKSPACE/build/MC909EditorInstrument_artefacts/Release"
           for d in AU VST3; do
-            [ -d "$d" ] && ditto -c -k --sequesterRsrc --keepParent "$d" "$GITHUB_WORKSPACE/out/Instrument-$d.zip"
+            [ -d "$d" ] && ditto -c -k --sequesterRsrc --keepParent "$d" "$GITHUB_WORKSPACE/out/$d.zip"
           done
           ls -la "$GITHUB_WORKSPACE/out"
 
@@ -111,18 +104,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path out | Out-Null
-          $releaseDir = "build/MC909Editor_artefacts/Release"
-          foreach ($d in @("VST3", "Standalone")) {
-            $src = Join-Path $releaseDir $d
-            if (Test-Path $src) {
-              Compress-Archive -Path $src -DestinationPath (Join-Path "out" "$d.zip") -Force
-            }
-          }
-          # The instrument build (put it on a MIDI track; routes MIDI tracks / the MPK
-          # through the editor so the keys and pads light up).
-          $instSrc = "build/MC909EditorInstrument_artefacts/Release/VST3"
-          if (Test-Path $instSrc) {
-            Compress-Archive -Path $instSrc -DestinationPath "out/Instrument-VST3.zip" -Force
+          $src = "build/MC909EditorInstrument_artefacts/Release/VST3"
+          if (Test-Path $src) {
+            Compress-Archive -Path $src -DestinationPath "out/VST3.zip" -Force
           }
           Get-ChildItem out
 

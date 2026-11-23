@@ -40,12 +40,13 @@ set(MC909_SOURCES
     Source/SearchOverlay.cpp
 )
 
-# Two builds of the same code:
-#   MC909Editor            audio effect. Goes on the audio track that carries the unit's audio
-#                          (the Master tab's meters and spectrum need that audio).
-#   MC909EditorInstrument  instrument. Goes on a MIDI track; Live can then route other MIDI
-#                          tracks and the MPK to it, so the keyboard and pads light up for those
-#                          notes and (with Thru on) they are passed on to the MC-909.
+# One plugin: the Instrument build. It goes on a MIDI track: Live routes the MPK and other MIDI tracks
+# to it (keyboard and pads light up, Thru to 909 passes notes on, To part plays the selected part), and its
+# sidechain audio input ("Audio From" in the device header) feeds the Master and Comp/EQ meters.
+# The audio-effect flavour of the same code is kept only as an option for hosts that dislike an instrument
+# with a sidechain: -DMC909_BUILD_LEGACY_EFFECT=ON (product "... (Effect)"). Not built or installed by default.
+option(MC909_BUILD_LEGACY_EFFECT "Also build the legacy audio-effect flavour" OFF)
+
 function(mc909_add_plugin target product code bundle formats synth)
     juce_add_plugin(${target}
         COMPANY_NAME              "Independent"
@@ -88,5 +89,8 @@ function(mc909_add_plugin target product code bundle formats synth)
     )
 endfunction()
 
-mc909_add_plugin(MC909Editor "MC-909 Editor" M909 com.example.mc909editor "AU;VST3;Standalone" FALSE)
-mc909_add_plugin(MC909EditorInstrument "MC-909 Editor Instrument" M90I com.example.mc909editorinstrument "AU;VST3" TRUE)
+mc909_add_plugin(MC909EditorInstrument "MC-909 Editor" M90I com.example.mc909editorinstrument "AU;VST3" TRUE)
+
+if(MC909_BUILD_LEGACY_EFFECT)
+    mc909_add_plugin(MC909Editor "MC-909 Editor (Effect)" M909 com.example.mc909editor "AU;VST3;Standalone" FALSE)
+endif()
